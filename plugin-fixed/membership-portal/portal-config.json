@@ -1,0 +1,24 @@
+{
+  "name": "Rewards Membership Portal",
+  "description": "Full customer portal for rewards, vouchers, and membership management",
+  "version": "1.0.0",
+  "proxy_path": "/apps/rewards",
+  "authentication": "customer_account",
+  "features": [
+    "view_rewards",
+    "claim_vouchers",
+    "manage_membership",
+    "view_history",
+    "browse_rewards_marketplace"
+  ],
+  "styling": {
+    "theme_integration": true,
+    "custom_css_allowed": true,
+    "responsive": true
+  },
+  "navigation": {
+    "show_in_menu": true,
+    "show_in_account": true,
+    "menu_label": "My Rewards"
+  }
+}

@@ -1,0 +1,17 @@
+# Membership Portal - App Proxy
+# Full-page customer portal for rewards and membership management
+# Shopify 2024-2025 Compliant
+
+name = "Rewards Membership Portal"
+type = "app_proxy"
+
+[proxy]
+# Merchants configure this in Shopify: Apps → Your App → App Proxy
+# Suggested path: /apps/rewards
+# Points to: YOUR_API_ENDPOINT/portal
+url = "/apps/rewards"
+subpath = "portal"
+
+[proxy.routing]
+# All /apps/rewards/* URLs route to your portal
+prefix = "portal"
