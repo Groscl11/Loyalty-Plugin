@@ -1,0 +1,19 @@
+# Cart Rewards - Cart UI Extension
+# Displays rewards messaging in cart drawer/page
+# Shopify 2024-2025 Compliant
+
+name = "Rewards Cart Widget"
+type = "cart_ui_extension"
+
+[[extensions.targets]]
+target = "purchase.cart.block.render"
+
+[extensions.capabilities]
+network_access = true
+
+[extensions.settings]
+[[extensions.settings.fields]]
+key = "widget_id"
+type = "single_line_text_field"
+name = "Loyalty by Goself Widget ID"
+description = "Configure via https://goself.netlify.app"

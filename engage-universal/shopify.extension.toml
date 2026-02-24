@@ -1,0 +1,40 @@
+api_version = "2024-10"
+
+[[extensions]]
+type = "theme_app_extension"
+name = "Engage Universal"
+handle = "engage-universal"
+
+[extensions.settings]
+[[extensions.settings.fields]]
+key = "widget_id"
+type = "text"
+name = "Loyalty by Goself Widget ID"
+info = "Enter the widget ID from your Goself dashboard"
+
+[[extensions.settings.fields]]
+key = "position"
+type = "select"
+name = "Widget Position"
+info = "Choose where to display the widget"
+default = "bottom-right"
+options = [
+  { label = "Bottom Right", value = "bottom-right" },
+  { label = "Bottom Left", value = "bottom-left" },
+  { label = "Top Right", value = "top-right" },
+  { label = "Top Left", value = "top-left" }
+]
+
+[[extensions.settings.fields]]
+key = "show_on_mobile"
+type = "checkbox"
+name = "Show on Mobile"
+info = "Display widget on mobile devices"
+default = true
+
+[[extensions.settings.fields]]
+key = "auto_open"
+type = "checkbox"
+name = "Auto Open"
+info = "Automatically open widget on page load"
+default = false

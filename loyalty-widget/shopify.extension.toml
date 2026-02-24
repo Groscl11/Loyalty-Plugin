@@ -1,0 +1,53 @@
+# Shopify Loyalty Widget Extension
+# This creates an embeddable loyalty rewards widget for Shopify storefronts
+
+api_version = "2024-01"
+name = "loyalty-by-goself-widget"
+type = "theme"
+
+[[extensions.blocks]]
+type = "app"
+name = "Loyalty Rewards Widget"
+
+[extensions.blocks.settings]
+[[extensions.blocks.settings.fields]]
+type = "checkbox"
+id = "show_floating_button"
+label = "Show Floating Widget Button"
+default = true
+
+[[extensions.blocks.settings.fields]]
+type = "select"
+id = "button_position"
+label = "Button Position"
+default = "bottom-right"
+options = [
+  { label = "Bottom Right", value = "bottom-right" },
+  { label = "Bottom Left", value = "bottom-left" },
+  { label = "Top Right", value = "top-right" },
+  { label = "Top Left", value = "top-left" }
+]
+
+[[extensions.blocks.settings.fields]]
+type = "color"
+id = "primary_color"
+label = "Primary Color"
+default = "#3B82F6"
+
+[[extensions.blocks.settings.fields]]
+type = "color"
+id = "accent_color"
+label = "Accent Color"
+default = "#10B981"
+
+[[extensions.blocks.settings.fields]]
+type = "text"
+id = "points_name"
+label = "Points Name"
+default = "Rewards Points"
+
+[[extensions.blocks.settings.fields]]
+type = "checkbox"
+id = "auto_redeem"
+label = "Enable Auto-Redeem"
+default = false

@@ -1,0 +1,9 @@
+{
+  "name": "order-status-rewards",
+  "version": "1.0.0",
+  "dependencies": {
+    "@shopify/ui-extensions": "^2024.10.0",
+    "@shopify/ui-extensions-react": "^2024.10.0",
+    "react": "^18.0.0"
+  }
+}
