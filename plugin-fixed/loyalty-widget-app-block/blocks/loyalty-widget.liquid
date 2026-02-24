@@ -1,0 +1,165 @@
+{% comment %}
+  Loyalty Widget App Block
+  This block automatically loads the loyalty widget on your storefront
+  No manual code editing required!
+{% endcomment %}
+
+{% if block.settings.show_widget %}
+<div
+  id="rewardhub-loyalty-widget"
+  data-shop="{{ shop.permanent_domain }}"
+  data-position="{{ block.settings.position }}"
+  data-primary-color="{{ block.settings.primary_color }}"
+  data-secondary-color="{{ block.settings.secondary_color }}"
+  data-welcome-text="{{ block.settings.welcome_text }}"
+  data-auto-popup="{{ block.settings.auto_popup }}"
+  data-popup-delay="{{ block.settings.popup_delay }}"
+  {% if customer %}
+  data-customer-email="{{ customer.email }}"
+  data-customer-id="{{ customer.id }}"
+  data-customer-name="{{ customer.first_name }} {{ customer.last_name }}"
+  {% endif %}
+>
+</div>
+
+<script src="https://lizgppzyyljqbmzdytia.supabase.co/functions/v1/widget-script?shop={{ shop.permanent_domain }}" async></script>
+<script>
+  // Initialize widget with theme customizer settings when loaded
+  window.addEventListener('load', function() {
+    if (window.LoyaltyByGoself || window.RewardHub) {
+      var widgetEl = document.getElementById('rewardhub-loyalty-widget');
+      const widget = window.LoyaltyByGoself || window.RewardHub;
+      widget.init({
+        shop: widgetEl.dataset.shop,
+        position: widgetEl.dataset.position || 'bottom-right',
+        primaryColor: widgetEl.dataset.primaryColor || '#667eea',
+        secondaryColor: widgetEl.dataset.secondaryColor || '#764ba2',
+        welcomeText: widgetEl.dataset.welcomeText || 'Welcome to our Loyalty Program!',
+        autoPopup: widgetEl.dataset.autoPopup === 'true',
+        popupDelay: parseInt(widgetEl.dataset.popupDelay) || 3,
+        customer: {
+          email: widgetEl.dataset.customerEmail || null,
+          id: widgetEl.dataset.customerId || null,
+          name: widgetEl.dataset.customerName || null
+        }
+      });
+    }
+  });
+</script>
+
+<style>
+  /* Base widget container styles */
+  #rewardhub-loyalty-widget {
+    position: fixed;
+    z-index: 999999;
+  }
+
+  /* Position variants */
+  #rewardhub-loyalty-widget[data-position="bottom-right"] {
+    bottom: 20px;
+    right: 20px;
+  }
+
+  #rewardhub-loyalty-widget[data-position="bottom-left"] {
+    bottom: 20px;
+    left: 20px;
+  }
+
+  #rewardhub-loyalty-widget[data-position="top-right"] {
+    top: 20px;
+    right: 20px;
+  }
+
+  #rewardhub-loyalty-widget[data-position="top-left"] {
+    top: 20px;
+    left: 20px;
+  }
+
+  /* Mobile responsive */
+  @media (max-width: 768px) {
+    #rewardhub-loyalty-widget[data-position="bottom-right"],
+    #rewardhub-loyalty-widget[data-position="bottom-left"] {
+      bottom: 10px;
+    }
+
+    #rewardhub-loyalty-widget[data-position="bottom-left"] {
+      left: 10px;
+    }
+
+    #rewardhub-loyalty-widget[data-position="bottom-right"] {
+      right: 10px;
+    }
+  }
+</style>
+
+{% schema %}
+{
+  "name": "Loyalty Widget",
+  "target": "body",
+  "settings": [
+    {
+      "type": "checkbox",
+      "id": "show_widget",
+      "label": "Show Widget",
+      "default": true
+    },
+    {
+      "type": "select",
+      "id": "position",
+      "label": "Widget Position",
+      "default": "bottom-right",
+      "options": [
+        {
+          "value": "bottom-right",
+          "label": "Bottom Right"
+        },
+        {
+          "value": "bottom-left",
+          "label": "Bottom Left"
+        },
+        {
+          "value": "top-right",
+          "label": "Top Right"
+        },
+        {
+          "value": "top-left",
+          "label": "Top Left"
+        }
+      ]
+    },
+    {
+      "type": "color",
+      "id": "primary_color",
+      "label": "Primary Color",
+      "default": "#667eea"
+    },
+    {
+      "type": "color",
+      "id": "secondary_color",
+      "label": "Secondary Color",
+      "default": "#764ba2"
+    },
+    {
+      "type": "text",
+      "id": "welcome_text",
+      "label": "Welcome Text",
+      "default": "Welcome to our Loyalty Program!"
+    },
+    {
+      "type": "checkbox",
+      "id": "auto_popup",
+      "label": "Auto Popup on First Visit",
+      "default": false
+    },
+    {
+      "type": "range",
+      "id": "popup_delay",
+      "label": "Popup Delay (seconds)",
+      "default": 3,
+      "min": 0,
+      "max": 30,
+      "step": 1
+    }
+  ]
+}
+{% endschema %}

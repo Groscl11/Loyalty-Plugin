@@ -1,0 +1,257 @@
+{% comment %}
+  Loyalty Points Display Block
+  Shows customer's loyalty points balance and tier information
+{% endcomment %}
+
+<div class="loyalty-points-display" data-loyalty-widget>
+  <div class="loyalty-points-loading">
+    Loading your loyalty points...
+  </div>
+
+  <div class="loyalty-points-content" style="display: none;">
+    <div class="loyalty-points-header">
+      <h3 class="loyalty-points-title">Your Loyalty Status</h3>
+    </div>
+
+    <div class="loyalty-points-balance">
+      <div class="points-amount">
+        <span class="points-number" data-points-balance>0</span>
+        <span class="points-label" data-points-name>Points</span>
+      </div>
+      <div class="points-tier">
+        <span class="tier-badge" data-tier-name>Member</span>
+      </div>
+    </div>
+
+    <div class="loyalty-points-earn" data-cart-points style="display: none;">
+      <p>Earn <strong><span data-earn-points>0</span> <span data-points-name-singular>points</span></strong> with this order!</p>
+    </div>
+
+    <div class="loyalty-points-redeem" data-redeem-section style="display: none;">
+      <p>You can use up to <strong><span data-max-points>0</span> points</strong> for a discount of <strong><span data-discount-value>$0.00</span></strong></p>
+      <button class="loyalty-redeem-button" data-redeem-button>Apply Points Discount</button>
+    </div>
+  </div>
+
+  <div class="loyalty-points-error" style="display: none;">
+    <p>Unable to load loyalty points information.</p>
+  </div>
+</div>
+
+<style>
+  .loyalty-points-display {
+    padding: 20px;
+    border: 2px solid #e5e7eb;
+    border-radius: 8px;
+    margin: 20px 0;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+  }
+
+  .loyalty-points-title {
+    font-size: 18px;
+    font-weight: bold;
+    margin: 0 0 15px 0;
+  }
+
+  .loyalty-points-balance {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 15px;
+  }
+
+  .points-amount {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .points-number {
+    font-size: 36px;
+    font-weight: bold;
+  }
+
+  .points-label {
+    font-size: 14px;
+    opacity: 0.9;
+  }
+
+  .tier-badge {
+    background: rgba(255, 255, 255, 0.2);
+    padding: 8px 16px;
+    border-radius: 20px;
+    font-weight: 600;
+    backdrop-filter: blur(10px);
+  }
+
+  .loyalty-points-earn,
+  .loyalty-points-redeem {
+    background: rgba(255, 255, 255, 0.1);
+    padding: 12px;
+    border-radius: 6px;
+    margin-top: 12px;
+  }
+
+  .loyalty-points-earn p,
+  .loyalty-points-redeem p {
+    margin: 0;
+    font-size: 14px;
+  }
+
+  .loyalty-redeem-button {
+    margin-top: 10px;
+    background: white;
+    color: #667eea;
+    border: none;
+    padding: 10px 20px;
+    border-radius: 6px;
+    font-weight: 600;
+    cursor: pointer;
+    width: 100%;
+    transition: all 0.3s;
+  }
+
+  .loyalty-redeem-button:hover {
+    background: #f3f4f6;
+    transform: translateY(-2px);
+  }
+
+  .loyalty-points-loading,
+  .loyalty-points-error {
+    text-align: center;
+    padding: 20px;
+  }
+</style>
+
+<script>
+(function() {
+  const widget = document.querySelector('[data-loyalty-widget]');
+  if (!widget) return;
+
+  const apiUrl = '{{ block.settings.api_url | default: "" }}';
+  const clientId = '{{ block.settings.client_id | default: "" }}';
+
+  if (!apiUrl || !clientId) {
+    console.error('Loyalty Points: Missing configuration');
+    return;
+  }
+
+  const customerEmail = '{{ customer.email }}';
+
+  if (!customerEmail) {
+    widget.innerHTML = '<div class="loyalty-points-error"><p>Please log in to view your loyalty points.</p></div>';
+    return;
+  }
+
+  async function loadLoyaltyStatus() {
+    try {
+      const response = await fetch(`${apiUrl}/functions/v1/get-loyalty-status`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxpemdwcHp5eWxqcWJtemR5dGlhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQ0MDE0MDYsImV4cCI6MjA3OTk3NzQwNn0.E5yJHY4mjOvLiqZCfCp9vnNC7xsRAlBSdW55YE2RPC0'
+      },
+      body: JSON.stringify({
+        customer_email: customerEmail,
+        shop_domain: window.Shopify?.shop || window.location.hostname
+      })
+    });
+
+      if (!response.ok) {
+        throw new Error('Failed to load loyalty status');
+      }
+
+      const data = await response.json();
+
+      displayLoyaltyStatus(data);
+    } catch (error) {
+      console.error('Error loading loyalty status:', error);
+      widget.querySelector('.loyalty-points-loading').style.display = 'none';
+      widget.querySelector('.loyalty-points-error').style.display = 'block';
+    }
+  }
+
+  function displayLoyaltyStatus(data) {
+    widget.querySelector('.loyalty-points-loading').style.display = 'none';
+    widget.querySelector('.loyalty-points-content').style.display = 'block';
+
+    widget.querySelector('[data-points-balance]').textContent = data.points_balance.toLocaleString();
+    widget.querySelectorAll('[data-points-name]').forEach(el => {
+      el.textContent = data.program.points_name;
+    });
+    widget.querySelectorAll('[data-points-name-singular]').forEach(el => {
+      el.textContent = data.program.points_name_singular;
+    });
+    widget.querySelector('[data-tier-name]').textContent = data.tier.name;
+
+    const cartTotal = parseFloat('{{ cart.total_price | money_without_currency }}' || 0);
+
+    if (cartTotal > 0) {
+      const earnPoints = Math.floor((cartTotal * data.tier.points_earn_rate) / data.tier.points_earn_divisor);
+
+      if (earnPoints > 0) {
+        widget.querySelector('[data-earn-points]').textContent = earnPoints;
+        widget.querySelector('[data-cart-points]').style.display = 'block';
+      }
+
+      if (data.program.allow_redemption && data.points_balance > 0) {
+        checkRedemption(data, cartTotal);
+      }
+    }
+  }
+
+  async function checkRedemption(loyaltyData, cartTotal) {
+    try {
+      const response = await fetch(`${apiUrl}/functions/v1/check-loyalty-redemption`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          member_user_id: loyaltyData.member_user_id,
+          order_amount: cartTotal,
+        }),
+      });
+
+      const redemptionData = await response.json();
+
+      if (redemptionData.can_redeem && redemptionData.max_points > 0) {
+        widget.querySelector('[data-max-points]').textContent = redemptionData.max_points;
+        widget.querySelector('[data-discount-value]').textContent = `${redemptionData.currency} ${redemptionData.discount_value.toFixed(2)}`;
+        widget.querySelector('[data-redeem-section]').style.display = 'block';
+      }
+    } catch (error) {
+      console.error('Error checking redemption:', error);
+    }
+  }
+
+  widget.querySelector('[data-redeem-button]')?.addEventListener('click', function() {
+    alert('Redemption functionality requires Shopify discount code integration. Contact your store administrator.');
+  });
+
+  loadLoyaltyStatus();
+})();
+</script>
+
+{% schema %}
+{
+  "name": "Loyalty Points Display",
+  "target": "section",
+  "settings": [
+    {
+      "type": "text",
+      "id": "api_url",
+      "label": "API URL",
+      "info": "Your Supabase project URL",
+      "default": "https://lizgppzyyljqbmzdytia.supabase.co"
+    },
+    {
+      "type": "text",
+      "id": "client_id",
+      "label": "Client ID",
+      "info": "Your client ID from the loyalty system",
+      "default": "https://lizgppzyyljqbmzdytia.supabase.co"
+    }
+  ]
+}
+{% endschema %}

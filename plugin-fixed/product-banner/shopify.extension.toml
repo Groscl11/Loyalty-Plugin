@@ -1,0 +1,37 @@
+# Product Banner - Theme App Extension
+# Merchants can place this block on product pages
+
+type = "theme"
+name = "Rewards Product Banner"
+
+[extensions.blocks]
+[extensions.blocks.product_banner]
+name = "Rewards Banner"
+target = "section"
+javascript = "product-banner.js"
+stylesheet = "product-banner.css"
+settings = [
+  {
+    type = "text",
+    id = "widget_id",
+    label = "Widget ID"
+  },
+  {
+    type = "text",
+    id = "title",
+    label = "Banner Title",
+    default = "Get Exclusive Rewards!"
+  },
+  {
+    type = "textarea",
+    id = "description",
+    label = "Description",
+    default = "Purchase this product and unlock special member benefits"
+  },
+  {
+    type = "text",
+    id = "cta_text",
+    label = "Button Text",
+    default = "Learn More"
+  }
+]
