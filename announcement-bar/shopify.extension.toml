@@ -1,0 +1,37 @@
+# Announcement Bar - Theme App Extension
+# Displays as a header bar across the top of the site
+
+type = "theme"
+name = "Rewards Announcement Bar"
+
+[extensions.blocks]
+[extensions.blocks.announcement_bar]
+name = "Rewards Announcement"
+target = "header"
+javascript = "announcement-bar.js"
+stylesheet = "announcement-bar.css"
+settings = [
+  {
+    type = "text",
+    id = "widget_id",
+    label = "Widget ID"
+  },
+  {
+    type = "text",
+    id = "message",
+    label = "Announcement Message",
+    default = "Join our rewards program and get exclusive benefits!"
+  },
+  {
+    type = "text",
+    id = "cta_text",
+    label = "Call to Action",
+    default = "Learn More"
+  },
+  {
+    type = "checkbox",
+    id = "dismissible",
+    label = "Allow customers to dismiss",
+    default = true
+  }
+]

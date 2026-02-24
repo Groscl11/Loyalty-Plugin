@@ -1,0 +1,16 @@
+{
+  "name": "rewards-cart-widget",
+  "version": "1.0.0",
+  "description": "Rewards Cart Widget - Cart UI Extension",
+  "scripts": {
+    "build": "echo 'Build handled by Shopify CLI'"
+  },
+  "dependencies": {
+    "@shopify/checkout-ui-extensions": "^0.27.0",
+    "@shopify/checkout-ui-extensions-react": "^0.27.0",
+    "react": "^18.2.0"
+  },
+  "devDependencies": {
+    "@shopify/cli": "^3.50.0"
+  }
+}

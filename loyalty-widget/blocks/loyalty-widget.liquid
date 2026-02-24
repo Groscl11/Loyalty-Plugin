@@ -1,0 +1,1002 @@
+{% comment %}
+  Loyalty by Goself — Loyalty Widget
+  Shows customer loyalty points, ways to earn, and redemption options
+{% endcomment %}
+
+<div id="rewardhub-loyalty-widget" data-widget-config="{{ block.settings | json }}">
+  <!-- Floating Button -->
+  {% if block.settings.show_floating_button %}
+  <button id="rewardhub-widget-button" class="rewardhub-floating-btn" style="
+    position: fixed;
+    {% if block.settings.button_position == 'bottom-right' %}
+      bottom: 20px; right: 20px;
+    {% elsif block.settings.button_position == 'bottom-left' %}
+      bottom: 20px; left: 20px;
+    {% elsif block.settings.button_position == 'top-right' %}
+      top: 80px; right: 20px;
+    {% elsif block.settings.button_position == 'top-left' %}
+      top: 80px; left: 20px;
+    {% endif %}
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    background: {{ block.settings.primary_color }};
+    color: white;
+    border: none;
+    cursor: pointer;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    z-index: 999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 24px;
+    transition: transform 0.2s, box-shadow 0.2s;
+  ">
+    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+      <path d="M2 17l10 5 10-5"/>
+      <path d="M2 12l10 5 10-5"/>
+    </svg>
+  </button>
+  {% endif %}
+
+  <!-- Widget Panel -->
+  <div id="rewardhub-widget-panel" class="rewardhub-panel" style="display: none;">
+    <div class="rewardhub-panel-inner">
+      <!-- Header -->
+      <div class="rewardhub-header">
+        <button id="rewardhub-close-btn" class="rewardhub-close">×</button>
+        <div class="rewardhub-welcome">
+          <h3>Thanks for joining our tribe!</h3>
+          <p id="rewardhub-referral-text">Refer and Earn more!</p>
+        </div>
+      </div>
+
+      <!-- Loading State -->
+      <div id="rewardhub-loading" class="rewardhub-loading">
+        <div class="spinner"></div>
+        <p>Loading your rewards...</p>
+      </div>
+
+      <!-- Login Prompt -->
+      <div id="rewardhub-login-prompt" class="rewardhub-login" style="display: none;">
+        <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="{{ block.settings.primary_color }}" stroke-width="2">
+          <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+          <circle cx="12" cy="7" r="4"/>
+        </svg>
+        <h3>Sign in to view your rewards</h3>
+        <p>Track your points, redeem rewards, and unlock exclusive benefits</p>
+        <a href="/account/login" class="rewardhub-btn-primary">Sign In</a>
+      </div>
+
+      <!-- Content -->
+      <div id="rewardhub-content" style="display: none;">
+        <!-- Points Balance -->
+        <div class="rewardhub-balance">
+          <div class="rewardhub-points-display">
+            <span id="rewardhub-points-value" class="points-value">0</span>
+            <span class="points-label">{{ block.settings.points_name }}</span>
+          </div>
+          {% if block.settings.auto_redeem %}
+          <div class="rewardhub-auto-redeem">
+            <label class="toggle">
+              <input type="checkbox" id="rewardhub-auto-redeem-toggle">
+              <span class="toggle-slider"></span>
+            </label>
+            <span>Automatically Redeem & Apply Coupons</span>
+          </div>
+          {% endif %}
+        </div>
+
+        <!-- Tabs -->
+        <div class="rewardhub-tabs">
+          <button class="rewardhub-tab active" data-tab="history">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"/>
+              <polyline points="12 6 12 12 16 14"/>
+            </svg>
+            History
+          </button>
+          <button class="rewardhub-tab" data-tab="earn">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+            </svg>
+            Ways To Earn
+          </button>
+          <button class="rewardhub-tab" data-tab="redeem">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="3" y="8" width="18" height="4" rx="1"/>
+              <path d="M12 8v13"/>
+              <path d="M19 12v7a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-7"/>
+            </svg>
+            Ways To Redeem
+          </button>
+        </div>
+
+        <!-- Tab Content -->
+        <div class="rewardhub-tab-content">
+          <!-- History Tab -->
+          <div id="rewardhub-tab-history" class="tab-pane active">
+            <div class="rewardhub-tier-progress">
+              <div class="tier-info">
+                <span id="rewardhub-current-tier">Member</span>
+                <span class="tier-action">Get to Next level</span>
+              </div>
+              <div class="progress-bar">
+                <div id="rewardhub-tier-progress" class="progress-fill" style="width: 0%"></div>
+              </div>
+            </div>
+            <div id="rewardhub-transactions" class="transactions-list">
+              <p class="empty-state">No transactions yet. Start earning points!</p>
+            </div>
+          </div>
+
+          <!-- Ways To Earn Tab -->
+          <div id="rewardhub-tab-earn" class="tab-pane">
+            <div class="rewardhub-section">
+              <h4>Your Coupons</h4>
+              <div id="rewardhub-coupons" class="coupons-list">
+                <p class="empty-state">No coupons available yet</p>
+              </div>
+            </div>
+
+            <div class="rewardhub-section">
+              <h4>Earn More Points</h4>
+              <div id="rewardhub-earn-actions" class="earn-actions">
+                <div class="earn-item">
+                  <div class="earn-icon">🛍️</div>
+                  <div class="earn-info">
+                    <h5>Make a Purchase</h5>
+                    <p>Earn <strong id="earn-purchase-points">10</strong> points per $1 spent</p>
+                  </div>
+                </div>
+                <div class="earn-item">
+                  <div class="earn-icon">📧</div>
+                  <div class="earn-info">
+                    <h5>Subscribe to Newsletter</h5>
+                    <p>Earn <strong>100</strong> points</p>
+                  </div>
+                  <button class="earn-btn">Subscribe</button>
+                </div>
+                <div class="earn-item">
+                  <div class="earn-icon">🎂</div>
+                  <div class="earn-info">
+                    <h5>Add Birthday</h5>
+                    <p>Earn <strong>50</strong> points</p>
+                  </div>
+                  <button class="earn-btn">Add</button>
+                </div>
+                <div class="earn-item">
+                  <div class="earn-icon">👥</div>
+                  <div class="earn-info">
+                    <h5>Refer a Friend</h5>
+                    <p>Earn <strong>500</strong> points per referral</p>
+                  </div>
+                  <button class="earn-btn">Share</button>
+                </div>
+                <div class="earn-item">
+                  <div class="earn-icon">📱</div>
+                  <div class="earn-info">
+                    <h5>Follow on Social Media</h5>
+                    <p>Earn <strong>50</strong> points</p>
+                  </div>
+                  <button class="earn-btn">Follow</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Ways To Redeem Tab -->
+          <div id="rewardhub-tab-redeem" class="tab-pane">
+            <div id="rewardhub-rewards" class="rewards-list">
+              <p class="empty-state">Loading available rewards...</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Footer -->
+      <div class="rewardhub-footer">
+        <span>Powered by <strong>Loyalty by Goself</strong></span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Styles -->
+<style>
+.rewardhub-panel {
+  position: fixed;
+  {% if block.settings.button_position contains 'right' %}
+    right: 20px;
+  {% else %}
+    left: 20px;
+  {% endif %}
+  {% if block.settings.button_position contains 'bottom' %}
+    bottom: 90px;
+  {% else %}
+    top: 150px;
+  {% endif %}
+  width: 400px;
+  max-width: calc(100vw - 40px);
+  max-height: 600px;
+  background: white;
+  border-radius: 16px;
+  box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+  z-index: 1000;
+  overflow: hidden;
+}
+
+.rewardhub-panel-inner {
+  display: flex;
+  flex-direction: column;
+  height: 600px;
+  max-height: calc(100vh - 180px);
+}
+
+.rewardhub-header {
+  background: {{ block.settings.primary_color }};
+  color: white;
+  padding: 20px;
+  position: relative;
+}
+
+.rewardhub-close {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  background: none;
+  border: none;
+  color: white;
+  font-size: 32px;
+  cursor: pointer;
+  line-height: 1;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.rewardhub-welcome h3 {
+  margin: 0 0 5px 0;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.rewardhub-welcome p {
+  margin: 0;
+  font-size: 14px;
+  opacity: 0.9;
+}
+
+.rewardhub-loading {
+  padding: 40px;
+  text-align: center;
+  color: #6B7280;
+}
+
+.spinner {
+  border: 3px solid #f3f3f3;
+  border-top: 3px solid {{ block.settings.primary_color }};
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  animation: spin 1s linear infinite;
+  margin: 0 auto 16px;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.rewardhub-login {
+  padding: 40px;
+  text-align: center;
+}
+
+.rewardhub-login svg {
+  margin-bottom: 20px;
+}
+
+.rewardhub-login h3 {
+  margin: 0 0 10px 0;
+  font-size: 20px;
+  color: #111827;
+}
+
+.rewardhub-login p {
+  margin: 0 0 24px 0;
+  color: #6B7280;
+  font-size: 14px;
+}
+
+.rewardhub-btn-primary {
+  display: inline-block;
+  background: {{ block.settings.primary_color }};
+  color: white;
+  padding: 12px 32px;
+  border-radius: 8px;
+  text-decoration: none;
+  font-weight: 500;
+  transition: opacity 0.2s;
+}
+
+.rewardhub-btn-primary:hover {
+  opacity: 0.9;
+}
+
+#rewardhub-content {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.rewardhub-balance {
+  background: linear-gradient(135deg, {{ block.settings.primary_color }} 0%, {{ block.settings.accent_color }} 100%);
+  color: white;
+  padding: 24px;
+  text-align: center;
+}
+
+.rewardhub-points-display {
+  margin-bottom: 16px;
+}
+
+.points-value {
+  display: block;
+  font-size: 48px;
+  font-weight: 700;
+  line-height: 1;
+  margin-bottom: 8px;
+}
+
+.points-label {
+  font-size: 14px;
+  opacity: 0.9;
+}
+
+.rewardhub-auto-redeem {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  font-size: 13px;
+}
+
+.toggle {
+  position: relative;
+  display: inline-block;
+  width: 44px;
+  height: 24px;
+}
+
+.toggle input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.toggle-slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(255,255,255,0.3);
+  border-radius: 24px;
+  transition: 0.3s;
+}
+
+.toggle-slider:before {
+  position: absolute;
+  content: "";
+  height: 18px;
+  width: 18px;
+  left: 3px;
+  bottom: 3px;
+  background-color: white;
+  border-radius: 50%;
+  transition: 0.3s;
+}
+
+.toggle input:checked + .toggle-slider {
+  background-color: rgba(255,255,255,0.5);
+}
+
+.toggle input:checked + .toggle-slider:before {
+  transform: translateX(20px);
+}
+
+.rewardhub-tabs {
+  display: flex;
+  border-bottom: 1px solid #E5E7EB;
+  background: white;
+}
+
+.rewardhub-tab {
+  flex: 1;
+  padding: 12px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-size: 13px;
+  color: #6B7280;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border-bottom: 2px solid transparent;
+  transition: all 0.2s;
+}
+
+.rewardhub-tab.active {
+  color: {{ block.settings.primary_color }};
+  border-bottom-color: {{ block.settings.primary_color }};
+}
+
+.rewardhub-tab svg {
+  flex-shrink: 0;
+}
+
+.rewardhub-tab-content {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.tab-pane {
+  display: none;
+  padding: 16px;
+}
+
+.tab-pane.active {
+  display: block;
+}
+
+.rewardhub-tier-progress {
+  margin-bottom: 20px;
+  padding: 16px;
+  background: #F9FAFB;
+  border-radius: 8px;
+}
+
+.tier-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+  font-size: 13px;
+}
+
+#rewardhub-current-tier {
+  font-weight: 600;
+  color: #111827;
+}
+
+.tier-action {
+  color: {{ block.settings.primary_color }};
+  font-size: 12px;
+}
+
+.progress-bar {
+  height: 8px;
+  background: #E5E7EB;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: {{ block.settings.accent_color }};
+  transition: width 0.3s;
+}
+
+.transactions-list {
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.transaction-item {
+  padding: 12px;
+  border-bottom: 1px solid #F3F4F6;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.transaction-info h5 {
+  margin: 0 0 4px 0;
+  font-size: 14px;
+  color: #111827;
+}
+
+.transaction-info p {
+  margin: 0;
+  font-size: 12px;
+  color: #6B7280;
+}
+
+.transaction-points {
+  font-weight: 600;
+  font-size: 16px;
+}
+
+.transaction-points.earned {
+  color: {{ block.settings.accent_color }};
+}
+
+.transaction-points.redeemed {
+  color: #EF4444;
+}
+
+.rewardhub-section {
+  margin-bottom: 24px;
+}
+
+.rewardhub-section h4 {
+  margin: 0 0 12px 0;
+  font-size: 16px;
+  color: #111827;
+  font-weight: 600;
+}
+
+.earn-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.earn-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px;
+  background: #F9FAFB;
+  border-radius: 8px;
+  border: 1px solid #E5E7EB;
+}
+
+.earn-icon {
+  font-size: 32px;
+  flex-shrink: 0;
+}
+
+.earn-info {
+  flex: 1;
+}
+
+.earn-info h5 {
+  margin: 0 0 4px 0;
+  font-size: 14px;
+  color: #111827;
+}
+
+.earn-info p {
+  margin: 0;
+  font-size: 12px;
+  color: #6B7280;
+}
+
+.earn-info strong {
+  color: {{ block.settings.accent_color }};
+}
+
+.earn-btn {
+  background: {{ block.settings.primary_color }};
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.rewards-list {
+  display: grid;
+  gap: 12px;
+}
+
+.reward-item {
+  padding: 16px;
+  background: #F9FAFB;
+  border-radius: 8px;
+  border: 1px solid #E5E7EB;
+}
+
+.reward-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: start;
+  margin-bottom: 12px;
+}
+
+.reward-info h5 {
+  margin: 0 0 4px 0;
+  font-size: 14px;
+  color: #111827;
+}
+
+.reward-info p {
+  margin: 0;
+  font-size: 12px;
+  color: #6B7280;
+}
+
+.reward-cost {
+  background: {{ block.settings.primary_color }};
+  color: white;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.reward-btn {
+  width: 100%;
+  background: {{ block.settings.accent_color }};
+  color: white;
+  border: none;
+  padding: 10px;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.reward-btn:disabled {
+  background: #D1D5DB;
+  cursor: not-allowed;
+}
+
+.empty-state {
+  text-align: center;
+  color: #9CA3AF;
+  padding: 40px 20px;
+  font-size: 14px;
+}
+
+.rewardhub-footer {
+  padding: 12px;
+  text-align: center;
+  border-top: 1px solid #E5E7EB;
+  font-size: 12px;
+  color: #6B7280;
+  background: white;
+}
+
+.rewardhub-floating-btn:hover {
+  transform: scale(1.05);
+  box-shadow: 0 6px 16px rgba(0,0,0,0.2);
+}
+
+@media (max-width: 480px) {
+  .rewardhub-panel {
+    width: calc(100vw - 40px);
+    bottom: 90px !important;
+    left: 20px !important;
+    right: 20px !important;
+  }
+
+  .rewardhub-panel-inner {
+    height: 500px;
+  }
+}
+</style>
+
+<!-- JavaScript -->
+<script>
+(function() {
+  const API_URL = 'https://lizgppzyyljqbmzdytia.supabase.co/functions/v1';
+  const widgetButton = document.getElementById('rewardhub-widget-button');
+  const widgetPanel = document.getElementById('rewardhub-widget-panel');
+  const closeBtn = document.getElementById('rewardhub-close-btn');
+  const tabs = document.querySelectorAll('.rewardhub-tab');
+  const tabPanes = document.querySelectorAll('.tab-pane');
+
+  let customerEmail = null;
+  let customerData = null;
+
+  // Get customer email from Shopify
+  {% if customer %}
+    customerEmail = '{{ customer.email }}';
+  {% endif %}
+
+  // Toggle widget panel
+  if (widgetButton) {
+    widgetButton.addEventListener('click', function() {
+      const isVisible = widgetPanel.style.display !== 'none';
+      widgetPanel.style.display = isVisible ? 'none' : 'block';
+
+      if (!isVisible && customerEmail) {
+        loadCustomerData();
+      } else if (!isVisible && !customerEmail) {
+        showLoginPrompt();
+      }
+    });
+  }
+
+  // Close widget
+  if (closeBtn) {
+    closeBtn.addEventListener('click', function() {
+      widgetPanel.style.display = 'none';
+    });
+  }
+
+  // Tab switching
+  tabs.forEach(tab => {
+    tab.addEventListener('click', function() {
+      const tabName = this.dataset.tab;
+
+      tabs.forEach(t => t.classList.remove('active'));
+      tabPanes.forEach(p => p.classList.remove('active'));
+
+      this.classList.add('active');
+      document.getElementById('rewardhub-tab-' + tabName).classList.add('active');
+    });
+  });
+
+  // Show login prompt
+  function showLoginPrompt() {
+    document.getElementById('rewardhub-loading').style.display = 'none';
+    document.getElementById('rewardhub-login-prompt').style.display = 'block';
+    document.getElementById('rewardhub-content').style.display = 'none';
+  }
+
+  // Load customer data
+  async function loadCustomerData() {
+    document.getElementById('rewardhub-loading').style.display = 'block';
+    document.getElementById('rewardhub-login-prompt').style.display = 'none';
+    document.getElementById('rewardhub-content').style.display = 'none';
+
+    try {
+      const shopDomain = '{{ shop.domain }}';
+      const response = await fetch(`${API_URL}/get-loyalty-status`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxpemdwcHp5eWxqcWJtemR5dGlhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQ0MDE0MDYsImV4cCI6MjA3OTk3NzQwNn0.E5yJHY4mjOvLiqZCfCp9vnNC7xsRAlBSdW55YE2RPC0'
+        },
+        body: JSON.stringify({
+          customer_email: customerEmail,
+          shop_domain: shopDomain
+        })
+      });
+
+      if (!response.ok) throw new Error('Failed to load loyalty data');
+
+      customerData = await response.json();
+
+      displayCustomerData();
+    } catch (error) {
+      console.error('Error loading loyalty data:', error);
+      document.getElementById('rewardhub-loading').innerHTML = '<p style="color: #EF4444;">Failed to load rewards data. Please try again.</p>';
+    }
+  }
+
+  // Display customer data
+  function displayCustomerData() {
+    document.getElementById('rewardhub-loading').style.display = 'none';
+    document.getElementById('rewardhub-content').style.display = 'flex';
+
+    // Update points balance
+    const points = customerData.points_balance || 0;
+    document.getElementById('rewardhub-points-value').textContent = points.toLocaleString();
+
+    // Update tier progress
+    const tier = customerData.tier || { name: 'Member' };
+    const lifetimeEarned = customerData.lifetime_points_earned || 0;
+    const nextTierThreshold = tier.next_tier_threshold || 1000;
+    const progress = Math.min((lifetimeEarned / nextTierThreshold) * 100, 100);
+
+    document.getElementById('rewardhub-current-tier').textContent = tier.name;
+    document.getElementById('rewardhub-tier-progress').style.width = progress + '%';
+
+    // Load transactions
+    loadTransactions();
+
+    // Load available rewards
+    loadRewards();
+  }
+
+  // Load transactions
+  function loadTransactions() {
+    const container = document.getElementById('rewardhub-transactions');
+    const transactions = customerData.recent_transactions || [];
+
+    if (transactions.length === 0) {
+      container.innerHTML = '<p class="empty-state">No transactions yet. Start earning points!</p>';
+      return;
+    }
+
+    container.innerHTML = transactions.map(txn => `
+      <div class="transaction-item">
+        <div class="transaction-info">
+          <h5>${txn.description || txn.transaction_type}</h5>
+          <p>${new Date(txn.created_at).toLocaleDateString()}</p>
+        </div>
+        <div class="transaction-points ${txn.points_change >= 0 ? 'earned' : 'redeemed'}">
+          ${txn.points_change >= 0 ? '+' : ''}${txn.points_change}
+        </div>
+      </div>
+    `).join('');
+  }
+
+  // Load rewards
+  async function loadRewards() {
+    const container = document.getElementById('rewardhub-rewards');
+
+    try {
+      const shopDomain = '{{ shop.domain }}';
+      const response = await fetch(`${API_URL}/get-customer-rewards`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          customer_email: customerEmail,
+          shop_domain: shopDomain
+        })
+      });
+
+      if (!response.ok) throw new Error('Failed to load rewards');
+
+      const data = await response.json();
+      const rewards = data.rewards || [];
+      const customerPoints = customerData.points_balance || 0;
+
+      if (rewards.length === 0) {
+        // Show sample rewards if none available
+        container.innerHTML = `
+          <div class="reward-item">
+            <div class="reward-header">
+              <div class="reward-info">
+                <h5>$5 Off Coupon</h5>
+                <p>Save $5 on your next purchase</p>
+              </div>
+              <div class="reward-cost">500 pts</div>
+            </div>
+            <button class="reward-btn" ${customerPoints < 500 ? 'disabled' : ''}>
+              ${customerPoints >= 500 ? 'Redeem Now' : 'Not Enough Points'}
+            </button>
+          </div>
+          <div class="reward-item">
+            <div class="reward-header">
+              <div class="reward-info">
+                <h5>$10 Off Coupon</h5>
+                <p>Save $10 on orders over $50</p>
+              </div>
+              <div class="reward-cost">1000 pts</div>
+            </div>
+            <button class="reward-btn" ${customerPoints < 1000 ? 'disabled' : ''}>
+              ${customerPoints >= 1000 ? 'Redeem Now' : 'Not Enough Points'}
+            </button>
+          </div>
+          <div class="reward-item">
+            <div class="reward-header">
+              <div class="reward-info">
+                <h5>Free Shipping</h5>
+                <p>Get free shipping on your next order</p>
+              </div>
+              <div class="reward-cost">750 pts</div>
+            </div>
+            <button class="reward-btn" ${customerPoints < 750 ? 'disabled' : ''}>
+              ${customerPoints >= 750 ? 'Redeem Now' : 'Not Enough Points'}
+            </button>
+          </div>
+        `;
+        return;
+      }
+
+      container.innerHTML = rewards.map(reward => {
+        const pointsCost = reward.value_amount || 500;
+        const canRedeem = customerPoints >= pointsCost;
+        return `
+          <div class="reward-item">
+            <div class="reward-header">
+              <div class="reward-info">
+                <h5>${reward.name}</h5>
+                <p>${reward.description || ''}</p>
+              </div>
+              <div class="reward-cost">${pointsCost} pts</div>
+            </div>
+            <button class="reward-btn" ${!canRedeem ? 'disabled' : ''} onclick="redeemReward('${reward.id}', ${pointsCost})">
+              ${canRedeem ? 'Redeem Now' : 'Not Enough Points'}
+            </button>
+          </div>
+        `;
+      }).join('');
+    } catch (error) {
+      console.error('Error loading rewards:', error);
+      container.innerHTML = '<p class="empty-state" style="color: #EF4444;">Failed to load rewards</p>';
+    }
+  }
+
+  // Redeem reward
+  window.redeemReward = async function(rewardId, pointsCost) {
+    if (!confirm(`Redeem this reward for ${pointsCost} points?`)) return;
+
+    try {
+      const shopDomain = '{{ shop.domain }}';
+      const response = await fetch(`${API_URL}/redeem-loyalty-points`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: customerEmail,
+          shop: shopDomain,
+          reward_id: rewardId,
+          points: pointsCost
+        })
+      });
+
+      if (!response.ok) throw new Error('Redemption failed');
+
+      const result = await response.json();
+
+      alert('Reward redeemed successfully! ' + (result.discount_code ? `Use code: ${result.discount_code}` : ''));
+      loadCustomerData(); // Refresh data
+    } catch (error) {
+      console.error('Error redeeming reward:', error);
+      alert('Failed to redeem reward. Please try again.');
+    }
+  };
+
+  // Auto-load if customer is logged in
+  {% if customer %}
+    // Widget is ready
+  {% endif %}
+})();
+</script>
+
+{% schema %}
+{
+  "name": "Loyalty Rewards Widget",
+  "target": "section",
+  "settings": [
+    {
+      "type": "checkbox",
+      "id": "show_floating_button",
+      "label": "Show Floating Widget Button",
+      "default": true
+    },
+    {
+      "type": "select",
+      "id": "button_position",
+      "label": "Button Position",
+      "options": [
+        { "value": "bottom-right", "label": "Bottom Right" },
+        { "value": "bottom-left", "label": "Bottom Left" },
+        { "value": "top-right", "label": "Top Right" },
+        { "value": "top-left", "label": "Top Left" }
+      ],
+      "default": "bottom-right"
+    },
+    {
+      "type": "color",
+      "id": "primary_color",
+      "label": "Primary Color",
+      "default": "#3B82F6"
+    },
+    {
+      "type": "color",
+      "id": "accent_color",
+      "label": "Accent Color",
+      "default": "#10B981"
+    },
+    {
+      "type": "text",
+      "id": "points_name",
+      "label": "Points Name",
+      "default": "Rewards Points"
+    },
+    {
+      "type": "checkbox",
+      "id": "auto_redeem",
+      "label": "Enable Auto-Redeem Option",
+      "default": false
+    }
+  ]
+}
+{% endschema %}
