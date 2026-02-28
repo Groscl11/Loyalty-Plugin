@@ -653,6 +653,57 @@
   cursor: not-allowed;
 }
 
+/* Brand & Partner Rewards */
+.rh-brand-item {
+  border-left: 3px solid #7c3aed;
+}
+
+.rh-brand-logo {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.rh-brand-logo-placeholder {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  background: #7c3aed;
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.rh-brand-badge {
+  display: inline-block;
+  background: #f3e8ff;
+  color: #7c3aed;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 12px;
+  margin-top: 4px;
+}
+
+.rh-section-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: #374151;
+  margin: 0 0 12px 0;
+}
+
+.rh-section-divider {
+  height: 1px;
+  background: #e5e7eb;
+  margin: 20px 0;
+}
+
 .empty-state {
   text-align: center;
   color: #9CA3AF;
@@ -888,7 +939,7 @@
   }
 
   // Load rewards
-  // ─── Rewards catalog: load from get-rewards-catalog ───────────────────────
+  // ─── Rewards: get-member-rewards (discount + brand + manual) ──────────────
   async function loadRewards() {
     const container = document.getElementById('rewardhub-rewards');
     if (!container) return;
@@ -898,57 +949,108 @@
       const shopDomain = '{{ shop.domain }}';
       const memberId = customerData?.member_user_id || '';
       const res = await fetch(
-        `${API_URL}/get-rewards-catalog?shop=${encodeURIComponent(shopDomain)}&member_user_id=${encodeURIComponent(memberId)}`,
+        `${API_URL}/get-member-rewards?shop=${encodeURIComponent(shopDomain)}&member_user_id=${encodeURIComponent(memberId)}`,
         { headers: { 'Authorization': `Bearer ${ANON_KEY}`, 'apikey': ANON_KEY } }
       );
       const data = await res.json();
-      const rewards = data.rewards || [];
-      const existingCodes = data.existing_codes || {};
-      const customerPoints = customerData?.points_balance || 0;
+      const discountRewards    = data.discount_rewards    || [];
+      const brandRewards       = data.brand_rewards       || [];
+      const manualRewards      = data.manual_rewards      || [];
+      const existingCodes      = data.existing_codes      || {};
+      const existingBrandCodes = data.existing_brand_codes || {};
+      const customerPoints     = customerData?.points_balance || 0;
 
-      if (rewards.length === 0) {
+      let html = '';
+
+      // Store discount rewards
+      if (discountRewards.length > 0) {
+        const deferredDiscount = [];
+        html += '<div class="rh-section-title">&#127991; Store Discounts</div>';
+        html += discountRewards.map(function(reward) {
+          var pointsCost = reward.points_cost || 500;
+          var canRedeem  = customerPoints >= pointsCost;
+          var existing   = existingCodes[reward.id];
+          var minNote    = reward.min_purchase_amount > 0
+            ? 'Min. order ' + reward.min_purchase_amount : 'No minimum required';
+          if (existing) {
+            deferredDiscount.push({ id: reward.id, title: reward.title, cost: pointsCost,
+              obj: { discount_code: existing.code, discount_value: reward.discount_value,
+                     discount_type: reward.reward_type, expires_at: existing.expires_at,
+                     new_points_balance: customerPoints } });
+            return '<div class="reward-item" id="reward-' + reward.id + '"></div>';
+          }
+          return '<div class="reward-item" id="reward-' + reward.id + '">' +
+            '<div class="reward-header">' +
+              '<div class="reward-info"><h5>' + reward.title + '</h5><p>' + (reward.description || minNote) + '</p></div>' +
+              '<div class="reward-cost">' + pointsCost + ' pts</div>' +
+            '</div>' +
+            '<button class="reward-btn" id="btn-' + reward.id + '" ' + (!canRedeem ? 'disabled' : '') +
+              ' onclick="redeemReward(\'' + reward.id + '\',' + pointsCost + ',\'' + reward.title.replace(/'/g,"\\'") + '\')">' +
+              (canRedeem ? 'Redeem Now' : 'Not Enough Points') +
+            '</button></div>';
+        }).join('');
+        deferredDiscount.forEach(function(d) {
+          setTimeout(function() { showCouponCode(d.id, d.title, d.cost, d.obj); }, 0);
+        });
+      }
+
+      // Brand & Manual partner rewards
+      var allPartnerRewards = brandRewards.concat(manualRewards);
+      if (allPartnerRewards.length > 0) {
+        var deferredBrand = [];
+        if (discountRewards.length > 0) html += '<div class="rh-section-divider"></div>';
+        html += '<div class="rh-section-title">&#127873; Brand &amp; Partner Rewards</div>';
+        html += allPartnerRewards.map(function(reward) {
+          var rid        = reward.reward_id || reward.id;
+          var pointsCost = reward.points_cost || 500;
+          var canRedeem  = customerPoints >= pointsCost;
+          var logoUrl    = reward.brand_logo || '';
+          var brandName  = reward.brand_name || (reward.reward_type === 'manual' ? 'Manual Reward' : 'Partner Brand');
+          var valueDesc  = reward.value_description || reward.description || '';
+          var existingB  = existingBrandCodes[rid];
+          if (existingB) {
+            deferredBrand.push({ rid: rid, title: reward.title, brandName: brandName,
+              brandWebsiteUrl: reward.brand_website_url || null,
+              code: existingB.code, expires_at: existingB.expires_at });
+            return '<div class="reward-item rh-brand-item" id="brand-reward-' + rid + '"></div>';
+          }
+          var logoHtml = logoUrl
+            ? '<img src="' + logoUrl + '" class="rh-brand-logo" alt="' + brandName + '">'
+            : '<div class="rh-brand-logo-placeholder">' + brandName.charAt(0) + '</div>';
+          var safeTitle     = reward.title.replace(/'/g, "\\'");
+          var safeBrandName = brandName.replace(/'/g, "\\'");
+          var brandUrl      = reward.brand_website_url || '';
+          var configId      = reward.config_id || '';
+          return '<div class="reward-item rh-brand-item" id="brand-reward-' + rid + '">' +
+            '<div class="reward-header" style="align-items:center">' +
+              logoHtml +
+              '<div class="reward-info" style="flex:1;margin:0 10px">' +
+                '<h5>' + reward.title + '</h5><p>' + valueDesc + '</p>' +
+                '<span class="rh-brand-badge">' + brandName + '</span>' +
+              '</div>' +
+              '<div class="reward-cost">' + pointsCost + ' pts</div>' +
+            '</div>' +
+            '<button class="reward-btn" id="brand-btn-' + rid + '" ' + (!canRedeem ? 'disabled' : '') +
+              ' onclick="redeemBrandReward(\'' + rid + '\',\'' + configId + '\',' + pointsCost + ',\'' + safeTitle + '\',\'' + safeBrandName + '\',\'' + brandUrl + '\')">' +
+              (canRedeem ? 'Redeem Now' : 'Not Enough Points') +
+            '</button></div>';
+        }).join('');
+        deferredBrand.forEach(function(d) {
+          setTimeout(function() {
+            showBrandVoucher(d.rid, d.title, {
+              voucher_code: d.code, expires_at: d.expires_at,
+              brand_name: d.brandName, brand_website_url: d.brandWebsiteUrl,
+              already_exists: true, new_points_balance: customerPoints
+            });
+          }, 0);
+        });
+      }
+
+      if (!html) {
         container.innerHTML = '<p class="empty-state">No rewards available yet. Keep earning points!</p>';
         return;
       }
-
-      container.innerHTML = rewards.map(reward => {
-        const pointsCost = reward.points_cost || 500;
-        const canRedeem = customerPoints >= pointsCost;
-        const existing = existingCodes[reward.id];
-        const discountLabel = reward.reward_type === 'percentage_discount'
-          ? `${reward.discount_value}% off`
-          : `₹${reward.discount_value} off`;
-        const minNote = reward.min_purchase_amount > 0
-          ? `Min. order ₹${reward.min_purchase_amount}` : 'No minimum required';
-
-        if (existing) {
-          // Already have an unused code — render placeholder, then call showCouponCode
-          const rewardObj = {
-            discount_code: existing.code,
-            discount_value: reward.discount_value,
-            discount_type: reward.reward_type,
-            expires_at: existing.expires_at,
-            new_points_balance: customerPoints,
-          };
-          setTimeout(() => showCouponCode(reward.id, reward.title, pointsCost, rewardObj), 0);
-          return `<div class="reward-item" id="reward-${reward.id}"></div>`;
-        }
-
-        return `
-          <div class="reward-item" id="reward-${reward.id}">
-            <div class="reward-header">
-              <div class="reward-info">
-                <h5>${reward.title}</h5>
-                <p>${reward.description || minNote}</p>
-              </div>
-              <div class="reward-cost">${pointsCost} pts</div>
-            </div>
-            <button class="reward-btn" id="btn-${reward.id}" ${!canRedeem ? 'disabled' : ''}
-              onclick="redeemReward('${reward.id}', ${pointsCost}, '${reward.title}')">
-              ${canRedeem ? 'Redeem Now' : 'Not Enough Points'}
-            </button>
-          </div>`;
-      }).join('');
+      container.innerHTML = html;
     } catch (error) {
       console.error('Error loading rewards:', error);
       container.innerHTML = '<p class="empty-state" style="color:#ef4444">Failed to load rewards. Please try again.</p>';
@@ -981,6 +1083,74 @@
       </div>`;
   }
   window.showCouponCode = showCouponCode;
+
+  // ─── Show brand voucher card ─────────────────────────────────────────
+  function showBrandVoucher(rewardId, rewardTitle, result) {
+    const rewardEl = document.getElementById('brand-reward-' + rewardId);
+    if (!rewardEl) return;
+    const code      = result.voucher_code;
+    const brandName = result.brand_name || 'Partner Brand';
+    const brandUrl  = result.brand_website_url || null;
+    const expDate   = result.expires_at ? new Date(result.expires_at).toLocaleDateString('en-IN') : '';
+    rewardEl.innerHTML = `
+      <div class="reward-header">
+        <div class="reward-info">
+          <h5>${rewardTitle}</h5>
+          <p style="color:#16a34a;font-weight:600">✓ Voucher ready to use!</p>
+          <span class="rh-brand-badge">${brandName}</span>
+        </div>
+        <div class="reward-cost" style="background:#dcfce7;color:#166534">Claimed</div>
+      </div>
+      <div style="margin-top:10px">
+        <div style="display:flex;gap:8px;align-items:center">
+          <div style="flex:1;background:#f9fafb;border:2px dashed #d1d5db;border-radius:8px;padding:10px;text-align:center;font-family:monospace;font-size:16px;font-weight:700;color:#111;letter-spacing:2px">${code}</div>
+          <button onclick="copyCode('${code}', this)" style="background:#111;color:#fff;border:none;border-radius:8px;padding:10px 14px;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap">Copy</button>
+        </div>
+        <p style="font-size:11px;color:#9ca3af;margin:6px 0 8px;text-align:center">${expDate ? 'Expires ' + expDate : 'No expiry'}</p>
+        ${brandUrl ? `<a href="${brandUrl}" target="_blank" rel="noopener" style="display:block;text-align:center;background:#7c3aed;color:#fff;padding:10px;border-radius:8px;font-size:13px;font-weight:700;text-decoration:none">🌐 Visit ${brandName} to Redeem →</a>` : ''}
+      </div>`;
+  }
+  window.showBrandVoucher = showBrandVoucher;
+
+  // ─── Redeem brand reward ────────────────────────────────────────────────
+  window.redeemBrandReward = async function(rewardId, configId, pointsCost, rewardTitle, brandName, brandWebsiteUrl) {
+    const btn = document.getElementById('brand-btn-' + rewardId);
+    if (!btn || btn.disabled) return;
+    const originalText = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = 'Claiming voucher…';
+    try {
+      const shopDomain = '{{ shop.domain }}';
+      const res = await fetch(`${API_URL}/redeem-brand-reward`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${ANON_KEY}`, 'apikey': ANON_KEY },
+        body: JSON.stringify({
+          member_user_id: customerData.member_user_id,
+          reward_id: rewardId,
+          config_id: configId,
+          shop_domain: shopDomain,
+        })
+      });
+      const result = await res.json();
+      if (!result.success) {
+        btn.disabled = false;
+        btn.textContent = originalText;
+        alert(result.error || 'Redemption failed. Please try again.');
+        return;
+      }
+      if (!result.already_exists) {
+        customerData.points_balance = result.new_points_balance;
+        const balanceEl = document.getElementById('rewardhub-points-value');
+        if (balanceEl) balanceEl.textContent = result.new_points_balance.toLocaleString();
+      }
+      showBrandVoucher(rewardId, rewardTitle, result);
+    } catch (error) {
+      console.error('Brand redeem error:', error);
+      btn.disabled = false;
+      btn.textContent = originalText;
+      alert('Connection error. Please try again.');
+    }
+  };
 
   // ─── Copy coupon code ──────────────────────────────────────────────────────
   window.copyCode = function(code, btn) {
