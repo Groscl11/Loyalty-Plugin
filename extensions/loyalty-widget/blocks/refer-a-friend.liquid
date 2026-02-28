@@ -1,0 +1,330 @@
+{% comment %}
+  Refer a Friend Block
+  Displays a referral link/button for logged-in customers.
+  Add to any page template via Theme Editor → Apps → Add block → "Refer a Friend".
+{% endcomment %}
+
+<div class="rh-referral" id="rh-referral-{{ block.id }}" {{ block.shopify_attributes }}>
+  {% if customer %}
+    <div class="rh-referral-inner">
+      <div class="rh-referral-header">
+        <span class="rh-referral-icon">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+            <circle cx="9" cy="7" r="4"/>
+            <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+            <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+          </svg>
+        </span>
+        <div>
+          <h4 class="rh-referral-title">{{ block.settings.title }}</h4>
+          <p class="rh-referral-subtitle">{{ block.settings.subtitle }}</p>
+        </div>
+      </div>
+
+      <div class="rh-referral-reward">
+        <span class="rh-ref-badge">🎁 {{ block.settings.reward_text }}</span>
+      </div>
+
+      <div class="rh-referral-link-wrap" id="rh-ref-link-wrap-{{ block.id }}" style="display:none">
+        <p class="rh-ref-label">Your referral link:</p>
+        <div class="rh-ref-copy-row">
+          <span class="rh-ref-url" id="rh-ref-url-{{ block.id }}"></span>
+          <button class="rh-ref-copy-btn" id="rh-ref-copy-{{ block.id }}" onclick="rhCopyRef('{{ block.id }}')">Copy</button>
+        </div>
+      </div>
+
+      <div id="rh-ref-loading-{{ block.id }}" class="rh-ref-loading">
+        <div class="rh-ref-spinner"></div>
+        <span>Loading your link…</span>
+      </div>
+      <div id="rh-ref-error-{{ block.id }}" class="rh-ref-error" style="display:none">
+        Could not load referral link. <a href="#">Retry</a>
+      </div>
+    </div>
+  {% else %}
+    <div class="rh-referral-inner rh-referral-guest">
+      <span class="rh-referral-icon">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+          <circle cx="9" cy="7" r="4"/>
+          <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+          <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+        </svg>
+      </span>
+      <div>
+        <h4 class="rh-referral-title">{{ block.settings.title }}</h4>
+        <p class="rh-referral-subtitle">{{ block.settings.guest_text }}</p>
+      </div>
+      <a href="/account/login" class="rh-ref-signin-btn">Sign In</a>
+    </div>
+  {% endif %}
+</div>
+
+<style>
+  #rh-referral-{{ block.id }} {
+    font-family: inherit;
+    margin: {{ block.settings.margin_top }}px 0 {{ block.settings.margin_bottom }}px 0;
+  }
+  #rh-referral-{{ block.id }} .rh-referral-inner {
+    background: {{ block.settings.bg_color }};
+    border: 1.5px solid {{ block.settings.accent_color }}44;
+    border-radius: {{ block.settings.border_radius }}px;
+    padding: 16px;
+  }
+  #rh-referral-{{ block.id }} .rh-referral-header {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    margin-bottom: 12px;
+  }
+  #rh-referral-{{ block.id }} .rh-referral-icon {
+    flex-shrink: 0;
+    color: {{ block.settings.accent_color }};
+    margin-top: 2px;
+    display: flex;
+  }
+  #rh-referral-{{ block.id }} .rh-referral-title {
+    margin: 0 0 4px 0;
+    font-size: 15px;
+    font-weight: 700;
+    color: {{ block.settings.text_color }};
+  }
+  #rh-referral-{{ block.id }} .rh-referral-subtitle {
+    margin: 0;
+    font-size: 13px;
+    color: {{ block.settings.text_color }}bb;
+  }
+  #rh-referral-{{ block.id }} .rh-referral-reward {
+    margin-bottom: 12px;
+  }
+  #rh-referral-{{ block.id }} .rh-ref-badge {
+    display: inline-block;
+    background: {{ block.settings.accent_color }}22;
+    color: {{ block.settings.accent_color }};
+    font-size: 13px;
+    font-weight: 600;
+    padding: 4px 10px;
+    border-radius: 20px;
+  }
+  #rh-referral-{{ block.id }} .rh-ref-label {
+    font-size: 12px;
+    color: {{ block.settings.text_color }}99;
+    margin: 0 0 6px 0;
+  }
+  #rh-referral-{{ block.id }} .rh-ref-copy-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+  #rh-referral-{{ block.id }} .rh-ref-url {
+    flex: 1;
+    background: white;
+    border: 1px solid #e5e7eb;
+    border-radius: 6px;
+    padding: 8px 10px;
+    font-size: 12px;
+    color: #374151;
+    word-break: break-all;
+    display: block;
+    font-family: monospace;
+  }
+  #rh-referral-{{ block.id }} .rh-ref-copy-btn {
+    background: {{ block.settings.accent_color }};
+    color: white;
+    border: none;
+    border-radius: 6px;
+    padding: 8px 14px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: opacity 0.2s;
+  }
+  #rh-referral-{{ block.id }} .rh-ref-copy-btn:hover { opacity: 0.85; }
+  #rh-referral-{{ block.id }} .rh-ref-loading {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: {{ block.settings.text_color }}99;
+  }
+  #rh-referral-{{ block.id }} .rh-ref-spinner {
+    width: 16px;
+    height: 16px;
+    border: 2px solid #e5e7eb;
+    border-top-color: {{ block.settings.accent_color }};
+    border-radius: 50%;
+    animation: rh-spin-{{ block.id }} 0.8s linear infinite;
+  }
+  @keyframes rh-spin-{{ block.id }} {
+    to { transform: rotate(360deg); }
+  }
+  #rh-referral-{{ block.id }} .rh-ref-error {
+    font-size: 13px;
+    color: #ef4444;
+  }
+  #rh-referral-{{ block.id }} .rh-ref-error a {
+    color: {{ block.settings.accent_color }};
+  }
+  #rh-referral-{{ block.id }} .rh-referral-guest {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  #rh-referral-{{ block.id }} .rh-referral-guest > div {
+    flex: 1;
+  }
+  #rh-referral-{{ block.id }} .rh-ref-signin-btn {
+    flex-shrink: 0;
+    background: {{ block.settings.accent_color }};
+    color: white;
+    padding: 8px 16px;
+    border-radius: 6px;
+    text-decoration: none;
+    font-size: 13px;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+</style>
+
+{% if customer %}
+<script>
+(function() {
+  const blockId = '{{ block.id }}';
+  const API_URL = 'https://lizgppzyyljqbmzdytia.supabase.co/functions/v1';
+  const ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxpemdwcHp5eWxqcWJtemR5dGlhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQ0MDE0MDYsImV4cCI6MjA3OTk3NzQwNn0.E5yJHY4mjOvLiqZCfCp9vnNC7xsRAlBSdW55YE2RPC0';
+
+  async function loadReferralLink() {
+    try {
+      const res = await fetch(`${API_URL}/get-referral-link`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${ANON_KEY}`
+        },
+        body: JSON.stringify({
+          customer_email: '{{ customer.email }}',
+          shop_domain: '{{ shop.domain }}'
+        })
+      });
+
+      const data = await res.json();
+
+      document.getElementById('rh-ref-loading-' + blockId).style.display = 'none';
+
+      if (data.referral_link) {
+        const urlEl = document.getElementById('rh-ref-url-' + blockId);
+        if (urlEl) urlEl.textContent = data.referral_link;
+        document.getElementById('rh-ref-link-wrap-' + blockId).style.display = 'block';
+      } else {
+        document.getElementById('rh-ref-error-' + blockId).style.display = 'block';
+      }
+    } catch (e) {
+      document.getElementById('rh-ref-loading-' + blockId).style.display = 'none';
+      document.getElementById('rh-ref-error-' + blockId).style.display = 'block';
+    }
+  }
+
+  window.rhCopyRef = function(id) {
+    const url = document.getElementById('rh-ref-url-' + id)?.textContent;
+    if (!url) return;
+    navigator.clipboard.writeText(url).then(() => {
+      const btn = document.getElementById('rh-ref-copy-' + id);
+      if (btn) {
+        btn.textContent = 'Copied!';
+        btn.style.background = '#16a34a';
+        setTimeout(() => {
+          btn.textContent = 'Copy';
+          btn.style.background = '{{ block.settings.accent_color }}';
+        }, 2000);
+      }
+    });
+  };
+
+  loadReferralLink();
+})();
+</script>
+{% endif %}
+
+{% schema %}
+{
+  "name": "Refer a Friend",
+  "target": "section",
+  "settings": [
+    {
+      "type": "text",
+      "id": "title",
+      "label": "Title",
+      "default": "Refer a Friend"
+    },
+    {
+      "type": "text",
+      "id": "subtitle",
+      "label": "Subtitle (logged in)",
+      "default": "Share your link and earn points for every friend who joins."
+    },
+    {
+      "type": "text",
+      "id": "guest_text",
+      "label": "Text for guests",
+      "default": "Sign in to get your referral link and earn bonus points."
+    },
+    {
+      "type": "text",
+      "id": "reward_text",
+      "label": "Reward description",
+      "default": "Earn 500 points per successful referral"
+    },
+    {
+      "type": "header",
+      "content": "Styling"
+    },
+    {
+      "type": "color",
+      "id": "accent_color",
+      "label": "Accent Color",
+      "default": "#3B82F6"
+    },
+    {
+      "type": "color",
+      "id": "bg_color",
+      "label": "Background Color",
+      "default": "#EFF6FF"
+    },
+    {
+      "type": "color",
+      "id": "text_color",
+      "label": "Text Color",
+      "default": "#1E3A5F"
+    },
+    {
+      "type": "range",
+      "id": "border_radius",
+      "label": "Corner Radius",
+      "min": 0,
+      "max": 20,
+      "step": 2,
+      "default": 8
+    },
+    {
+      "type": "range",
+      "id": "margin_top",
+      "label": "Margin Top (px)",
+      "min": 0,
+      "max": 40,
+      "step": 4,
+      "default": 8
+    },
+    {
+      "type": "range",
+      "id": "margin_bottom",
+      "label": "Margin Bottom (px)",
+      "min": 0,
+      "max": 40,
+      "step": 4,
+      "default": 8
+    }
+  ]
+}
+{% endschema %}
