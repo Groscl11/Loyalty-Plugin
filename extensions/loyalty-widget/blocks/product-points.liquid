@@ -1,0 +1,136 @@
+{% comment %}
+  Product Page Points Banner
+  Shows how many points a customer earns for buying this product.
+  Add this block to any product page template in the Theme Editor.
+{% endcomment %}
+
+{% assign product_price = product.price | divided_by: 100.0 %}
+{% assign points_earned = product_price | times: block.settings.points_per_dollar | ceil %}
+
+<div class="rh-product-points" id="rh-product-points-{{ block.id }}" {{ block.shopify_attributes }}>
+  <div class="rh-pp-inner">
+    <span class="rh-pp-icon">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+        <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+      </svg>
+    </span>
+    <span class="rh-pp-text">
+      Earn <strong>{{ points_earned }} {{ block.settings.points_name }}</strong> for buying this product
+    </span>
+    {% if block.settings.show_login_nudge and customer == nil %}
+    <a href="/account/login" class="rh-pp-login">Sign in to earn</a>
+    {% endif %}
+  </div>
+</div>
+
+<style>
+  #rh-product-points-{{ block.id }} .rh-pp-inner {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: {{ block.settings.bg_color }};
+    border: 1.5px solid {{ block.settings.primary_color }}33;
+    border-radius: {{ block.settings.border_radius }}px;
+    padding: 10px 14px;
+    margin: {{ block.settings.margin_top }}px 0 {{ block.settings.margin_bottom }}px 0;
+    font-size: 14px;
+    color: {{ block.settings.text_color }};
+    font-family: inherit;
+  }
+  #rh-product-points-{{ block.id }} .rh-pp-icon {
+    flex-shrink: 0;
+    color: {{ block.settings.primary_color }};
+    display: flex;
+    align-items: center;
+  }
+  #rh-product-points-{{ block.id }} strong {
+    color: {{ block.settings.primary_color }};
+    font-weight: 700;
+  }
+  #rh-product-points-{{ block.id }} .rh-pp-login {
+    margin-left: auto;
+    font-size: 12px;
+    color: {{ block.settings.primary_color }};
+    text-decoration: underline;
+    white-space: nowrap;
+  }
+</style>
+
+{% schema %}
+{
+  "name": "Product Points Banner",
+  "target": "section",
+  "settings": [
+    {
+      "type": "range",
+      "id": "points_per_dollar",
+      "label": "Points Earned per $1 Spent",
+      "min": 1,
+      "max": 100,
+      "step": 1,
+      "default": 10
+    },
+    {
+      "type": "text",
+      "id": "points_name",
+      "label": "Points Name",
+      "default": "points"
+    },
+    {
+      "type": "checkbox",
+      "id": "show_login_nudge",
+      "label": "Show 'Sign in to earn' for guests",
+      "default": true
+    },
+    {
+      "type": "header",
+      "content": "Styling"
+    },
+    {
+      "type": "color",
+      "id": "primary_color",
+      "label": "Accent Color",
+      "default": "#3B82F6"
+    },
+    {
+      "type": "color",
+      "id": "bg_color",
+      "label": "Background Color",
+      "default": "#EFF6FF"
+    },
+    {
+      "type": "color",
+      "id": "text_color",
+      "label": "Text Color",
+      "default": "#1E3A5F"
+    },
+    {
+      "type": "range",
+      "id": "border_radius",
+      "label": "Corner Radius",
+      "min": 0,
+      "max": 20,
+      "step": 2,
+      "default": 8
+    },
+    {
+      "type": "range",
+      "id": "margin_top",
+      "label": "Margin Top (px)",
+      "min": 0,
+      "max": 40,
+      "step": 4,
+      "default": 8
+    },
+    {
+      "type": "range",
+      "id": "margin_bottom",
+      "label": "Margin Bottom (px)",
+      "min": 0,
+      "max": 40,
+      "step": 4,
+      "default": 8
+    }
+  ]
+}
+{% endschema %}
