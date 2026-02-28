@@ -1,0 +1,26 @@
+# Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
+
+client_id = "3290e6e4e5cb6711e4a7876ef40f87e8"
+name = " Loyalty by Goself"
+application_url = "https://goself.netlify.app"
+embedded = false
+
+[webhooks]
+api_version = "2026-01"
+
+[access_scopes]
+# Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
+scopes = "write_checkouts,read_checkouts,read_customers,write_customers,read_price_rules,write_price_rules,read_discounts,write_discounts,read_orders,write_orders,read_products,write_products,read_script_tags,write_script_tags,read_themes,write_themes"
+optional_scopes = [ ]
+use_legacy_install_flow = false
+
+[auth]
+redirect_urls = [
+  "https://lizgppzyyljqbmzdytia.supabase.co/functions/v1/shopify-oauth-callback"
+]
+
+[[extensions]]
+type = "theme"
+name = "Loyalty Rewards Widget"
+handle = "loyalty-widget"
+directory = "extensions/loyalty-widget"
