@@ -760,22 +760,39 @@
 
   // Load customer data
   async function loadCustomerData() {
-    document.getElementById('rewardhub-loading').style.display = 'block';
-    document.getElementById('rewardhub-login-prompt').style.display = 'none';
-    document.getElementById('rewardhub-content').style.display = 'none';
+    const loadingEl = document.getElementById('rewardhub-loading');
+    const loginEl   = document.getElementById('rewardhub-login-prompt');
+    const contentEl = document.getElementById('rewardhub-content');
+    if (loadingEl) { loadingEl.style.display = 'block'; loadingEl.innerHTML = '<div class="spinner"></div><p>Loading your rewards...</p>'; }
+    if (loginEl)   loginEl.style.display   = 'none';
+    if (contentEl) contentEl.style.display = 'none';
 
     try {
       const shopDomain = '{{ shop.domain }}';
-      const response = await fetch(`${API_URL}/get-loyalty-status?email=${encodeURIComponent(customerEmail)}&shop=${encodeURIComponent(shopDomain)}`);
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 10000); // 10 s timeout
 
-      if (!response.ok) throw new Error('Failed to load loyalty data');
+      const response = await fetch(
+        `${API_URL}/get-loyalty-status?email=${encodeURIComponent(customerEmail)}&shop_domain=${encodeURIComponent(shopDomain)}`,
+        { signal: controller.signal }
+      );
+      clearTimeout(timeout);
+
+      if (!response.ok) throw new Error('Status ' + response.status);
 
       customerData = await response.json();
+      if (customerData.error) throw new Error(customerData.error);
 
       displayCustomerData();
     } catch (error) {
-      console.error('Error loading loyalty data:', error);
-      document.getElementById('rewardhub-loading').innerHTML = '<p style="color: #EF4444;">Failed to load rewards data. Please try again.</p>';
+      console.error('Loyalty widget error:', error);
+      const loadingEl2 = document.getElementById('rewardhub-loading');
+      if (loadingEl2) loadingEl2.innerHTML =
+        '<p style="color:#EF4444;text-align:center;padding:8px 0">Failed to load rewards.<br>' +
+        '<button onclick="this.closest(\'#rewardhub-loading\') && (this.closest(\'[id^=rewardhub-panel-]\') ? null : null); window.__rhRetry && window.__rhRetry()" ' +
+        'style="margin-top:8px;background:{{ block.settings.primary_color }};color:#fff;border:none;padding:8px 20px;border-radius:6px;cursor:pointer;font-size:13px">' +
+        'Retry</button></p>';
+      window.__rhRetry = loadCustomerData;
     }
   }
 

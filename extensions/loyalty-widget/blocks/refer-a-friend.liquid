@@ -197,32 +197,39 @@
 
   async function loadReferralLink() {
     try {
-      const res = await fetch(`${API_URL}/get-referral-link`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${ANON_KEY}`
-        },
-        body: JSON.stringify({
-          customer_email: '{{ customer.email }}',
-          shop_domain: '{{ shop.domain }}'
-        })
-      });
+      const email = '{{ customer.email | escape }}';
+      const shop  = '{{ shop.domain }}';
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 10000);
+
+      const res = await fetch(
+        `${API_URL}/get-loyalty-status?email=${encodeURIComponent(email)}&shop_domain=${encodeURIComponent(shop)}`,
+        {
+          headers: { 'Authorization': `Bearer ${ANON_KEY}` },
+          signal: controller.signal
+        }
+      );
+      clearTimeout(timer);
 
       const data = await res.json();
+      const loadingEl = document.getElementById('rh-ref-loading-' + blockId);
+      if (loadingEl) loadingEl.style.display = 'none';
 
-      document.getElementById('rh-ref-loading-' + blockId).style.display = 'none';
-
-      if (data.referral_link) {
+      if (data && data.referral_code) {
+        const referralUrl = window.location.origin + '?ref=' + encodeURIComponent(data.referral_code);
         const urlEl = document.getElementById('rh-ref-url-' + blockId);
-        if (urlEl) urlEl.textContent = data.referral_link;
-        document.getElementById('rh-ref-link-wrap-' + blockId).style.display = 'block';
+        if (urlEl) urlEl.textContent = referralUrl;
+        const wrapEl = document.getElementById('rh-ref-link-wrap-' + blockId);
+        if (wrapEl) wrapEl.style.display = 'block';
       } else {
-        document.getElementById('rh-ref-error-' + blockId).style.display = 'block';
+        const errEl = document.getElementById('rh-ref-error-' + blockId);
+        if (errEl) errEl.style.display = 'block';
       }
     } catch (e) {
-      document.getElementById('rh-ref-loading-' + blockId).style.display = 'none';
-      document.getElementById('rh-ref-error-' + blockId).style.display = 'block';
+      const loadingEl = document.getElementById('rh-ref-loading-' + blockId);
+      if (loadingEl) loadingEl.style.display = 'none';
+      const errEl = document.getElementById('rh-ref-error-' + blockId);
+      if (errEl) errEl.style.display = 'block';
     }
   }
 
