@@ -871,17 +871,20 @@
       return;
     }
 
-    container.innerHTML = transactions.map(txn => `
+    container.innerHTML = transactions.map(txn => {
+      const pts = txn.points_amount ?? txn.points_change ?? 0;
+      const isEarn = pts >= 0;
+      return `
       <div class="transaction-item">
         <div class="transaction-info">
           <h5>${txn.description || txn.transaction_type}</h5>
           <p>${new Date(txn.created_at).toLocaleDateString()}</p>
         </div>
-        <div class="transaction-points ${txn.points_change >= 0 ? 'earned' : 'redeemed'}">
-          ${txn.points_change >= 0 ? '+' : ''}${txn.points_change}
+        <div class="transaction-points ${isEarn ? 'earned' : 'redeemed'}">
+          ${isEarn ? '+' : ''}${pts}
         </div>
-      </div>
-    `).join('');
+      </div>`;
+    }).join('');
   }
 
   // Load rewards
