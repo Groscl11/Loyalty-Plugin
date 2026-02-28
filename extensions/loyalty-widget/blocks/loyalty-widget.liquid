@@ -779,7 +779,23 @@
       );
       clearTimeout(timeout);
 
-      if (!response.ok) throw new Error('Status ' + response.status);
+      if (!response.ok) {
+        const errBody = await response.json().catch(() => ({}));
+        const errMsg = errBody.error || ('HTTP ' + response.status);
+        // Handle "not enrolled" / "not found" gracefully
+        if (response.status === 404) {
+          const loadingEl3 = document.getElementById('rewardhub-loading');
+          if (loadingEl3) loadingEl3.style.display = 'none';
+          const loginEl2 = document.getElementById('rewardhub-login-prompt');
+          if (loginEl2) {
+            loginEl2.style.display = 'block';
+            const msgEl = loginEl2.querySelector('p') || loginEl2;
+            msgEl.textContent = "You're not enrolled in our loyalty program yet. Place an order to join!";
+          }
+          return;
+        }
+        throw new Error(errMsg);
+      }
 
       customerData = await response.json();
       if (customerData.error) throw new Error(customerData.error);
@@ -789,8 +805,8 @@
       console.error('Loyalty widget error:', error);
       const loadingEl2 = document.getElementById('rewardhub-loading');
       if (loadingEl2) loadingEl2.innerHTML =
-        '<p style="color:#EF4444;text-align:center;padding:8px 0">Failed to load rewards.<br>' +
-        '<button onclick="this.closest(\'#rewardhub-loading\') && (this.closest(\'[id^=rewardhub-panel-]\') ? null : null); window.__rhRetry && window.__rhRetry()" ' +
+        `<p style="color:#EF4444;text-align:center;padding:8px 0">Failed to load rewards.<br><small style="color:#9ca3af">${error.message}</small><br>` +
+        '<button onclick="window.__rhRetry && window.__rhRetry()" ' +
         'style="margin-top:8px;background:{{ block.settings.primary_color }};color:#fff;border:none;padding:8px 20px;border-radius:6px;cursor:pointer;font-size:13px">' +
         'Retry</button></p>';
       window.__rhRetry = loadCustomerData;
