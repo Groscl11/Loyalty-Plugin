@@ -782,8 +782,31 @@
       if (!response.ok) {
         const errBody = await response.json().catch(() => ({}));
         const errMsg = errBody.error || ('HTTP ' + response.status);
-        // Handle "not enrolled" / "not found" gracefully
+        // Handle "not enrolled" / "not found" gracefully — auto-enroll them
         if (response.status === 404) {
+          if (customerEmail) {
+            // Try to auto-enroll this customer
+            try {
+              const regRes = await fetch(`${API_URL}/register-loyalty-member`, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${ANON_KEY}`,
+                  'apikey': ANON_KEY
+                },
+                body: JSON.stringify({
+                  shop_domain: '{{ shop.domain }}',
+                  email: customerEmail,
+                  first_name: '{{ customer.first_name | escape }}',
+                  last_name: '{{ customer.last_name | escape }}'
+                })
+              });
+              if (regRes.ok) {
+                // Enrolled — reload loyalty status
+                return loadCustomerData();
+              }
+            } catch (_) { /* fall through to login prompt */ }
+          }
           const loadingEl3 = document.getElementById('rewardhub-loading');
           if (loadingEl3) loadingEl3.style.display = 'none';
           const loginEl2 = document.getElementById('rewardhub-login-prompt');
@@ -896,26 +919,16 @@
           ? `Min. order ₹${reward.min_purchase_amount}` : 'No minimum required';
 
         if (existing) {
-          // Already have an unused code — show it
-          return `
-            <div class="reward-item" id="reward-${reward.id}">
-              <div class="reward-header">
-                <div class="reward-info">
-                  <h5>${reward.title}</h5>
-                  <p>${reward.description || minNote}</p>
-                </div>
-                <div class="reward-cost" style="background:#dcfce7;color:#166534">${discountLabel}</div>
-              </div>
-              <div style="margin-top:10px">
-                <div style="display:flex;gap:8px;align-items:center">
-                  <div style="flex:1;background:#f9fafb;border:2px dashed #d1d5db;border-radius:8px;padding:10px;text-align:center;font-family:monospace;font-size:16px;font-weight:700;color:#111;letter-spacing:2px">${existing.code}</div>
-                  <button onclick="copyCode('${existing.code}', this)" style="background:#111;color:#fff;border:none;border-radius:8px;padding:10px 14px;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap">Copy</button>
-                </div>
-                <p style="font-size:11px;color:#9ca3af;margin-top:6px;text-align:center">
-                  ✓ Use at checkout · ${existing.expires_at ? 'Expires ' + new Date(existing.expires_at).toLocaleDateString('en-IN') : 'No expiry'}
-                </p>
-              </div>
-            </div>`;
+          // Already have an unused code — render placeholder, then call showCouponCode
+          const rewardObj = {
+            discount_code: existing.code,
+            discount_value: reward.discount_value,
+            discount_type: reward.reward_type,
+            expires_at: existing.expires_at,
+            new_points_balance: customerPoints,
+          };
+          setTimeout(() => showCouponCode(reward.id, reward.title, pointsCost, rewardObj), 0);
+          return `<div class="reward-item" id="reward-${reward.id}"></div>`;
         }
 
         return `
@@ -939,6 +952,33 @@
     }
   }
 
+  // ─── Show coupon code card (used after redemption AND from existing_codes on load) ─
+  function showCouponCode(rewardId, rewardTitle, pointsCost, result) {
+    const rewardEl = document.getElementById('reward-' + rewardId);
+    if (!rewardEl) return;
+    const code = result.discount_code;
+    const discLabel = (result.discount_type === 'percentage_discount' || result.discount_type === 'percentage')
+      ? `${result.discount_value}% off` : `₹${result.discount_value} off`;
+    const expDate = result.expires_at ? new Date(result.expires_at).toLocaleDateString('en-IN') : '';
+    rewardEl.innerHTML = `
+      <div class="reward-header">
+        <div class="reward-info">
+          <h5>${rewardTitle}</h5>
+          <p style="color:#16a34a;font-weight:600">✓ Coupon ready to use!</p>
+        </div>
+        <div class="reward-cost" style="background:#dcfce7;color:#166534">${discLabel}</div>
+      </div>
+      <div style="margin-top:10px">
+        <div style="display:flex;gap:8px;align-items:center">
+          <div style="flex:1;background:#f9fafb;border:2px dashed #d1d5db;border-radius:8px;padding:10px;text-align:center;font-family:monospace;font-size:16px;font-weight:700;color:#111;letter-spacing:2px">${code}</div>
+          <button onclick="copyCode('${code}', this)" style="background:#111;color:#fff;border:none;border-radius:8px;padding:10px 14px;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap">Copy</button>
+        </div>
+        <p style="font-size:11px;color:#9ca3af;margin:6px 0 8px;text-align:center">${expDate ? 'Expires ' + expDate : 'No expiry'}</p>
+        <a href="/discount/${code}?redirect=/checkout" style="display:block;text-align:center;background:#16a34a;color:#fff;padding:10px;border-radius:8px;font-size:13px;font-weight:700;text-decoration:none">🛒 Apply &amp; Go to Checkout</a>
+      </div>`;
+  }
+  window.showCouponCode = showCouponCode;
+
   // ─── Copy coupon code ──────────────────────────────────────────────────────
   window.copyCode = function(code, btn) {
     navigator.clipboard.writeText(code).then(() => {
@@ -959,7 +999,7 @@
 
     try {
       const shopDomain = '{{ shop.domain }}';
-      const res = await fetch(`${API_URL}/redeem-loyalty-points`, {
+      const res = await fetch(`${API_URL}/redeem-reward`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${ANON_KEY}`, 'apikey': ANON_KEY },
         body: JSON.stringify({
@@ -980,35 +1020,15 @@
       }
 
       // Update points balance in UI
-      customerData.points_balance = result.new_points_balance;
-      const balanceEl = document.getElementById('rewardhub-points-value');
-      if (balanceEl) balanceEl.textContent = result.new_points_balance.toLocaleString();
-
-      // Replace button with coupon code display
-      const rewardEl = document.getElementById('reward-' + rewardId);
-      if (rewardEl) {
-        const discLabel = result.discount_type === 'percentage_discount'
-          ? `${result.discount_value}% off` : `₹${result.discount_value} off`;
-        const expDate = result.expires_at ? new Date(result.expires_at).toLocaleDateString('en-IN') : '';
-
-        rewardEl.innerHTML = `
-          <div class="reward-header">
-            <div class="reward-info">
-              <h5>${rewardTitle}</h5>
-              <p style="color:#16a34a;font-weight:600">✓ ${pointsCost} points redeemed!</p>
-            </div>
-            <div class="reward-cost" style="background:#dcfce7;color:#166534">${discLabel}</div>
-          </div>
-          <div style="margin-top:10px">
-            <div style="display:flex;gap:8px;align-items:center">
-              <div style="flex:1;background:#f9fafb;border:2px dashed #d1d5db;border-radius:8px;padding:10px;text-align:center;font-family:monospace;font-size:16px;font-weight:700;color:#111;letter-spacing:2px">${result.discount_code}</div>
-              <button onclick="copyCode('${result.discount_code}', this)" style="background:#111;color:#fff;border:none;border-radius:8px;padding:10px 14px;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap">Copy</button>
-            </div>
-            <p style="font-size:11px;color:#9ca3af;margin-top:6px;text-align:center">
-              Apply at checkout · ${expDate ? 'Expires ' + expDate : 'No expiry'}
-            </p>
-          </div>`;
+      if (!result.already_exists) {
+        customerData.points_balance = result.new_points_balance;
+        const balanceEl = document.getElementById('rewardhub-points-value');
+        if (balanceEl) balanceEl.textContent = result.new_points_balance.toLocaleString();
       }
+
+      // Replace button with coupon code + apply-to-checkout
+      showCouponCode(rewardId, rewardTitle, pointsCost, result);
+
     } catch (error) {
       console.error('Redeem error:', error);
       btn.disabled = false;
