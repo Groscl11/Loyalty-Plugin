@@ -1,0 +1,40 @@
+api_version = "2025-07"
+
+[[extensions]]
+
+uid = "96fdc49e-c192-b44f-8227-2bcb72a92a7f65a975f9"
+
+type = "ui_extension"
+name = "Campaign Reward Banner"
+handle = "campaign-reward-banner"
+
+[[extensions.targeting]]
+module = "./src/ThankYou.jsx"
+target = "purchase.thank-you.block.render"
+
+[[extensions.targeting]]
+module = "./src/OrderStatus.jsx"
+target = "customer-account.order-status.block.render"
+
+[extensions.capabilities]
+network_access = true
+api_access = true
+
+[extensions.settings]
+[[extensions.settings.fields]]
+key = "campaign_id"
+type = "single_line_text_field"
+name = "Campaign ID"
+description = "The GoSelf campaign ID whose rewards should be promoted. Find it in GoSelf Admin → Campaigns."
+
+[[extensions.settings.fields]]
+key = "banner_body"
+type = "multi_line_text_field"
+name = "Banner Message"
+description = "Message shown to the customer. e.g. 'Unlock Huge Savings! Grab your exclusive voucher and get up to 80% Off from our Partner brands.'"
+
+[[extensions.settings.fields]]
+key = "button_text"
+type = "single_line_text_field"
+name = "Button Label"
+description = "Text on the Claim button. Default: Claim Now"
