@@ -46,14 +46,14 @@ function CampaignRewardBanner() {
   useEffect(function() {
     // In editor/preview, skip fetch — show placeholder
     if (isEditor) { setChecked(true); return; }
-    if (!shopDomain || !orderId || !campaignId) {
+    if (!shopDomain || !campaignId) {
       setChecked(true);
       return;
     }
     var url = SUPABASE_URL + '/functions/v1/get-campaign-reward-link' +
       '?shop_domain=' + encodeURIComponent(shopDomain) +
-      '&shopify_order_id=' + encodeURIComponent(orderId) +
       '&campaign_id=' + encodeURIComponent(campaignId) +
+      (orderId ? '&shopify_order_id=' + encodeURIComponent(orderId) : '') +
       (customerEmail ? '&email=' + encodeURIComponent(customerEmail) : '');
 
     fetch(url, { headers: { apikey: ANON_KEY, Authorization: 'Bearer ' + ANON_KEY } })
@@ -63,7 +63,7 @@ function CampaignRewardBanner() {
       })
       .catch(function() {})
       .finally(function() { setChecked(true); });
-  }, [shopDomain, orderId, campaignId]);
+  }, [shopDomain, campaignId]);
 
   // In editor: show sample banner so merchant can preview the layout
   if (isEditor) {
