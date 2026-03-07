@@ -11,6 +11,7 @@ import {
   useSettings,
   useEmail,
   useOrder,
+  useExtensionEditor,
 } from '@shopify/ui-extensions-react/checkout';
 
 const SUPABASE_URL = 'https://lizgppzyyljqbmzdytia.supabase.co';
@@ -19,11 +20,14 @@ const ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsI
 export default reactExtension('purchase.thank-you.block.render', () => <CampaignRewardBanner />);
 
 function CampaignRewardBanner() {
-  let shop, settings, hookEmail, order;
+  let shop, settings, hookEmail, order, editor;
   try { shop = useShop(); } catch(e) { shop = null; }
   try { settings = useSettings(); } catch(e) { settings = null; }
   try { hookEmail = useEmail(); } catch(e) { hookEmail = ''; }
   try { order = useOrder(); } catch(e) { order = null; }
+  try { editor = useExtensionEditor(); } catch(e) { editor = null; }
+
+  const isEditor = !!editor;
 
   const shopDomain   = shop ? shop.myshopifyDomain : '';
   const campaignId   = settings && settings.campaign_id ? String(settings.campaign_id).trim() : '';
@@ -40,6 +44,8 @@ function CampaignRewardBanner() {
   const [checked, setChecked] = useState(false);
 
   useEffect(function() {
+    // In editor/preview, skip fetch — show placeholder
+    if (isEditor) { setChecked(true); return; }
     if (!shopDomain || !orderId || !campaignId) {
       setChecked(true);
       return;
@@ -58,6 +64,25 @@ function CampaignRewardBanner() {
       .catch(function() {})
       .finally(function() { setChecked(true); });
   }, [shopDomain, orderId, campaignId]);
+
+  // In editor: show sample banner so merchant can preview the layout
+  if (isEditor) {
+    var previewBody = (settings && settings.banner_body) ? String(settings.banner_body) : bannerBody;
+    var previewBtn  = (settings && settings.button_text) ? String(settings.button_text) : buttonText;
+    return (
+      <BlockStack spacing='tight'>
+        <Divider />
+        <InlineStack blockAlignment='center' spacing='base'>
+          <Text size='large'>🎁</Text>
+          <BlockStack spacing='extraTight' inlineSize='fill'>
+            <Text emphasis='bold'>Dear, Customer.</Text>
+            <Text appearance='subdued' size='small'>{previewBody}</Text>
+          </BlockStack>
+          <Button kind='primary'>{previewBtn}</Button>
+        </InlineStack>
+      </BlockStack>
+    );
+  }
 
   // Render nothing until checked, or if no reward
   if (!checked || !rewardData) return null;
