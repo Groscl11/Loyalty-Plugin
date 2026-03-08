@@ -5,7 +5,7 @@ api_version = "2025-07"
 uid = "293d114f-5b78-b574-c8ef-ad14806f3e60"
 
 type = "ui_extension"
-name = "Order Rewards & Referral"
+name = "Loyalty Points On Order"
 handle = "order-rewards"
 
 [[extensions.targeting]]

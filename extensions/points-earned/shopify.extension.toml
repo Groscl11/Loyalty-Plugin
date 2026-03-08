@@ -3,7 +3,7 @@ api_version = "2025-07"
 [[extensions]]
 uid = "47580161-e94e-1fee-f14d-2111f5807d13"
 type = "ui_extension"
-name = "Show Points Earned On This Order"
+name = "Loyalty Points On Order"
 handle = "order-status-rewards"
 
 [[extensions.targeting]]

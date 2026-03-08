@@ -15,7 +15,6 @@ function OrderStatusWidget() {
   const [loyaltyData, setLoyaltyData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState(false);
-  const [rewardData, setRewardData] = useState(null);
 
   const email = customer && customer.email ? customer.email : '';
   const shopDomain = shop && shop.myshopifyDomain ? shop.myshopifyDomain : '';
@@ -31,19 +30,6 @@ function OrderStatusWidget() {
       setLoyaltyData(data); setLoading(false);
     }).catch(function() { setLoading(false); });
   }, [email, shopDomain]);
-
-  // Fetch campaign reward token
-  useEffect(function() {
-    if (!shopDomain) return;
-    var url = SUPABASE_URL + '/functions/v1/get-order-token' +
-      '?shop=' + encodeURIComponent(shopDomain) +
-      (orderId ? '&order_id=' + encodeURIComponent(orderId) : '') +
-      (email ? '&customer_email=' + encodeURIComponent(email) : '');
-    fetch(url, { headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY } })
-      .then(function(r) { return r.json(); })
-      .then(function(data) { if (data && data.has_reward) setRewardData(data); })
-      .catch(function() {});
-  }, [shopDomain]);
 
   var earnRate = loyaltyData && loyaltyData.tier && loyaltyData.tier.points_earn_rate != null ? loyaltyData.tier.points_earn_rate : 1;
   var earnDivisor = loyaltyData && loyaltyData.tier && loyaltyData.tier.points_earn_divisor != null ? loyaltyData.tier.points_earn_divisor : 1;
