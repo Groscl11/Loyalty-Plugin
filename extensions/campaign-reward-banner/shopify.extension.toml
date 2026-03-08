@@ -5,7 +5,7 @@ api_version = "2025-07"
 uid = "96fdc49e-c192-b44f-8227-2bcb72a92a7f65a975f9"
 
 type = "ui_extension"
-name = "Campaign Reward Banner"
+name = "Post Purchase Rewards"
 handle = "campaign-reward-banner"
 
 [[extensions.targeting]]
