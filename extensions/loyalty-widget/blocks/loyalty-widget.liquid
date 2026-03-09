@@ -143,45 +143,7 @@
             <div class="rewardhub-section">
               <h4>Earn More Points</h4>
               <div id="rewardhub-earn-actions" class="earn-actions">
-                <div class="earn-item">
-                  <div class="earn-icon">🛍️</div>
-                  <div class="earn-info">
-                    <h5>Make a Purchase</h5>
-                    <p>Earn <strong id="earn-purchase-points">10</strong> points per $1 spent</p>
-                  </div>
-                </div>
-                <div class="earn-item">
-                  <div class="earn-icon">📧</div>
-                  <div class="earn-info">
-                    <h5>Subscribe to Newsletter</h5>
-                    <p>Earn <strong>100</strong> points</p>
-                  </div>
-                  <button class="earn-btn">Subscribe</button>
-                </div>
-                <div class="earn-item">
-                  <div class="earn-icon">🎂</div>
-                  <div class="earn-info">
-                    <h5>Add Birthday</h5>
-                    <p>Earn <strong>50</strong> points</p>
-                  </div>
-                  <button class="earn-btn">Add</button>
-                </div>
-                <div class="earn-item">
-                  <div class="earn-icon">👥</div>
-                  <div class="earn-info">
-                    <h5>Refer a Friend</h5>
-                    <p>Earn <strong>500</strong> points per referral</p>
-                  </div>
-                  <button class="earn-btn">Share</button>
-                </div>
-                <div class="earn-item">
-                  <div class="earn-icon">📱</div>
-                  <div class="earn-info">
-                    <h5>Follow on Social Media</h5>
-                    <p>Earn <strong>50</strong> points</p>
-                  </div>
-                  <button class="earn-btn">Follow</button>
-                </div>
+                <p class="empty-state" style="text-align:center;color:#9ca3af;padding:20px">Loading ways to earn...</p>
               </div>
             </div>
           </div>
@@ -593,6 +555,36 @@
   font-size: 13px;
   cursor: pointer;
   white-space: nowrap;
+  text-decoration: none;
+  display: inline-block;
+}
+
+.earn-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.earn-saved {
+  font-size: 12px;
+  color: #10B981;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.earn-date-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: flex-end;
+}
+
+.earn-date-input {
+  font-size: 12px;
+  padding: 4px 8px;
+  border: 1px solid #D1D5DB;
+  border-radius: 6px;
+  color: #111827;
+  width: 130px;
 }
 
 .rewards-list {
@@ -754,6 +746,16 @@
     customerEmail = '{{ customer.email }}';
   {% endif %}
 
+  function escapeHtml(str) {
+    if (!str) return '';
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
   function initWidget() {
     const widgetButton = document.getElementById('rewardhub-btn-' + BID);
     const widgetPanel  = document.getElementById('rewardhub-panel-' + BID);
@@ -908,8 +910,298 @@
     // Load transactions
     loadTransactions();
 
+    // Load earn actions from backend
+    loadEarnActions();
+
     // Load available rewards
     loadRewards();
+  }
+
+  // ── Ways To Earn: load from backend ──────────────────────────────────────
+  async function loadEarnActions() {
+    const container = document.getElementById('rewardhub-earn-actions');
+    if (!container) return;
+
+    const shopDomain = '{{ shop.domain }}';
+    const memberId   = customerData && customerData.member_user_id ? customerData.member_user_id : '';
+    const clientId   = customerData && customerData.client_id ? customerData.client_id : '';
+    const referralCode = customerData && customerData.referral_code ? customerData.referral_code : '';
+    const pointsName = (customerData && customerData.program && customerData.program.points_name) ? customerData.program.points_name : 'Points';
+
+    try {
+      const res = await fetch(
+        `${API_URL}/get-earning-rules?shop_domain=${encodeURIComponent(shopDomain)}&member_user_id=${encodeURIComponent(memberId)}`,
+        { headers: { 'Authorization': `Bearer ${ANON_KEY}`, 'apikey': ANON_KEY } }
+      );
+      const data = await res.json();
+      const rules = data.rules || [];
+
+      if (rules.length === 0) {
+        container.innerHTML = '<p class="empty-state">No earning actions configured yet.</p>';
+        return;
+      }
+
+      container.innerHTML = rules.map(function(rule) {
+        return renderEarnItem(rule, memberId, clientId, referralCode, pointsName, shopDomain);
+      }).join('');
+
+      // Bind events after render
+      rules.forEach(function(rule) {
+        bindEarnAction(rule, memberId, clientId, pointsName);
+      });
+
+    } catch (err) {
+      console.error('loadEarnActions error:', err);
+      container.innerHTML = '<p class="empty-state" style="color:#EF4444">Failed to load earning actions.</p>';
+    }
+  }
+
+  function earnIcon(ruleType) {
+    var icons = {
+      referral: '\uD83D\uDC65',
+      birthday: '\uD83C\uDF82',
+      anniversary: '\uD83D\uDC96',
+      social_follow: '\uD83D\uDCF1',
+      signup: '\uD83C\uDF81',
+      profile_complete: '\u2B50',
+      review: '\uD83D\uDCAC',
+      custom: '\uD83C\uDFF7\uFE0F',
+    };
+    return icons[ruleType] || '\uD83C\uDFC6';
+  }
+
+  function platformIcon(platform) {
+    var icons = {
+      instagram: '\uD83D\uDCF7',
+      facebook: '\uD83D\uDCCC',
+      youtube: '\uD83C\uDFA5',
+      twitter: '\uD83D\uDC26',
+      tiktok: '\uD83C\uDFB5',
+      linkedin: '\uD83D\uDCBC',
+      pinterest: '\uD83D\uDCCC',
+    };
+    return icons[(platform || '').toLowerCase()] || '\uD83D\uDCF1';
+  }
+
+  function renderEarnItem(rule, memberId, clientId, referralCode, pointsName, shopDomain) {
+    var icon = earnIcon(rule.rule_type);
+    var pts  = rule.points_reward;
+    var name = rule.name || rule.rule_type;
+    var desc = rule.description || '';
+    var ruleId = rule.id;
+    var completed = rule.is_completed;
+
+    // Right-side content varies by type
+    var rightHtml = '';
+
+    if (rule.rule_type === 'referral') {
+      var refUrl  = referralCode ? ('https://' + shopDomain + '?ref=' + referralCode) : '';
+      var shareMsg = encodeURIComponent('Shop and save! Use my referral link: ' + refUrl);
+      if (refUrl) {
+        rightHtml =
+          '<a href="https://wa.me/?text=' + shareMsg + '" target="_blank" rel="noopener" class="earn-btn">Share</a>';
+      }
+    } else if (rule.rule_type === 'birthday' || rule.rule_type === 'anniversary') {
+      if (rule.saved_value) {
+        // Date already saved
+        rightHtml = '<span class="earn-saved" id="earn-saved-' + ruleId + '">\u2713 Saved</span>';
+      } else {
+        rightHtml =
+          '<div class="earn-date-wrap" id="earn-date-wrap-' + ruleId + '">' +
+            '<input type="date" class="earn-date-input" id="earn-date-input-' + ruleId + '" ' +
+              'max="' + new Date().toISOString().slice(0,10) + '" />' +
+            '<button class="earn-btn" id="earn-btn-' + ruleId + '">Save</button>' +
+          '</div>';
+      }
+    } else if (rule.rule_type === 'social_follow') {
+      var platform = rule.social_platform || '';
+      icon = platformIcon(platform);
+      if (!desc) desc = 'Follow us on ' + (platform ? platform.charAt(0).toUpperCase() + platform.slice(1) : 'social media');
+      if (completed) {
+        rightHtml = '<span class="earn-saved">\u2713 Done</span>';
+      } else {
+        rightHtml = '<button class="earn-btn" id="earn-btn-' + ruleId + '">Follow</button>';
+      }
+    } else if (rule.rule_type === 'signup') {
+      if (completed) {
+        rightHtml = '<span class="earn-saved">\u2713 Claimed</span>';
+      } else {
+        rightHtml = '<button class="earn-btn" id="earn-btn-' + ruleId + '">Claim</button>';
+      }
+    } else if (rule.rule_type === 'profile_complete') {
+      if (completed) {
+        rightHtml = '<span class="earn-saved">\u2713 Done</span>';
+      } else {
+        rightHtml = '<button class="earn-btn" id="earn-btn-' + ruleId + '">Complete</button>';
+      }
+    } else {
+      // custom / review
+      if (completed) {
+        rightHtml = '<span class="earn-saved">\u2713 Done</span>';
+      } else {
+        rightHtml = '<button class="earn-btn" id="earn-btn-' + ruleId + '">Earn</button>';
+      }
+    }
+
+    var ptsLabel = desc
+      ? '<p>' + escapeHtml(desc) + '</p>'
+      : '<p>Earn <strong>' + pts + ' ' + escapeHtml(pointsName) + '</strong></p>';
+
+    return (
+      '<div class="earn-item" id="earn-item-' + ruleId + '">' +
+        '<div class="earn-icon">' + icon + '</div>' +
+        '<div class="earn-info"><h5>' + escapeHtml(name) + '</h5>' + ptsLabel + '</div>' +
+        rightHtml +
+      '</div>'
+    );
+  }
+
+  function bindEarnAction(rule, memberId, clientId, pointsName) {
+    var ruleId = rule.id;
+    var ruleType = rule.rule_type;
+    var btn = document.getElementById('earn-btn-' + ruleId);
+    if (!btn) return;
+
+    if (ruleType === 'birthday' || ruleType === 'anniversary') {
+      btn.addEventListener('click', function() {
+        var input = document.getElementById('earn-date-input-' + ruleId);
+        var dateVal = input ? input.value : '';
+        if (!dateVal) { alert('Please select a date first'); return; }
+        btn.disabled = true;
+        btn.textContent = 'Saving...';
+        fetch(API_URL + '/update-member-profile', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ' + ANON_KEY,
+            'apikey': ANON_KEY,
+          },
+          body: JSON.stringify({
+            member_user_id: memberId,
+            client_id: clientId,
+            [ruleType === 'birthday' ? 'date_of_birth' : 'anniversary_date']: dateVal,
+          }),
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(res) {
+          if (res.success) {
+            var wrap = document.getElementById('earn-date-wrap-' + ruleId);
+            if (wrap) {
+              wrap.outerHTML = '<span class="earn-saved" id="earn-saved-' + ruleId + '">\u2713 Saved \u2014 Points will be awarded on your ' +
+                (ruleType === 'birthday' ? 'birthday' : 'anniversary') + '!</span>';
+            }
+          } else {
+            btn.disabled = false;
+            btn.textContent = 'Save';
+            alert(res.error || 'Failed to save. Please try again.');
+          }
+        })
+        .catch(function() {
+          btn.disabled = false;
+          btn.textContent = 'Save';
+          alert('Connection error. Please try again.');
+        });
+      });
+
+    } else if (ruleType === 'social_follow') {
+      btn.addEventListener('click', function() {
+        // Open social URL
+        if (rule.social_url) {
+          window.open(rule.social_url, '_blank', 'noopener');
+        }
+        // Award points immediately (trust-based, one-time)
+        btn.disabled = true;
+        btn.textContent = 'Done!';
+        submitEarnAction(memberId, clientId, ruleId, ruleType, function(res) {
+          if (res && res.success) {
+            var item = document.getElementById('earn-item-' + ruleId);
+            if (item) {
+              var oldBtn = item.querySelector('.earn-btn');
+              if (oldBtn) oldBtn.outerHTML = '<span class="earn-saved">\u2713 +' + res.points_awarded + ' ' + escapeHtml(pointsName) + '</span>';
+            }
+            // Refresh points balance
+            if (res.new_balance !== undefined) {
+              var el = document.getElementById('rewardhub-points-value');
+              if (el) el.textContent = res.new_balance.toLocaleString();
+            }
+          } else {
+            btn.disabled = false;
+            btn.textContent = 'Follow';
+          }
+        });
+      });
+
+    } else if (ruleType === 'signup' || ruleType === 'profile_complete') {
+      btn.addEventListener('click', function() {
+        btn.disabled = true;
+        btn.textContent = 'Claiming...';
+        submitEarnAction(memberId, clientId, ruleId, ruleType, function(res) {
+          if (res && res.success) {
+            var item = document.getElementById('earn-item-' + ruleId);
+            if (item) {
+              var oldBtn = item.querySelector('.earn-btn');
+              if (oldBtn) oldBtn.outerHTML = '<span class="earn-saved">\u2713 +' + res.points_awarded + ' ' + escapeHtml(pointsName) + '</span>';
+            }
+            if (res.new_balance !== undefined) {
+              var el = document.getElementById('rewardhub-points-value');
+              if (el) el.textContent = res.new_balance.toLocaleString();
+            }
+          } else {
+            btn.disabled = false;
+            btn.textContent = 'Claim';
+            if (res && res.error) alert(res.error);
+          }
+        });
+      });
+
+    } else {
+      // generic / custom / review
+      btn.addEventListener('click', function() {
+        btn.disabled = true;
+        btn.textContent = 'Earning...';
+        submitEarnAction(memberId, clientId, ruleId, ruleType, function(res) {
+          if (res && res.success) {
+            var item = document.getElementById('earn-item-' + ruleId);
+            if (item) {
+              var oldBtn = item.querySelector('.earn-btn');
+              if (oldBtn) oldBtn.outerHTML = '<span class="earn-saved">\u2713 +' + res.points_awarded + ' ' + escapeHtml(pointsName) + '</span>';
+            }
+            if (res.new_balance !== undefined) {
+              var el = document.getElementById('rewardhub-points-value');
+              if (el) el.textContent = res.new_balance.toLocaleString();
+            }
+          } else {
+            btn.disabled = false;
+            btn.textContent = 'Earn';
+            if (res && res.error) alert(res.error);
+          }
+        });
+      });
+    }
+  }
+
+  function submitEarnAction(memberId, clientId, ruleId, ruleType, callback) {
+    fetch(API_URL + '/submit-earn-action', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + ANON_KEY,
+        'apikey': ANON_KEY,
+      },
+      body: JSON.stringify({
+        member_user_id: memberId,
+        client_id: clientId,
+        rule_id: ruleId,
+        rule_type: ruleType,
+        metadata: { submitted_by: 'widget' },
+      }),
+    })
+    .then(function(r) { return r.json(); })
+    .then(callback)
+    .catch(function(err) {
+      console.error('submitEarnAction error:', err);
+      callback(null);
+    });
   }
 
   // Load transactions
@@ -1206,7 +1498,13 @@
       console.error('Redeem error:', error);
       btn.disabled = false;
       btn.textContent = originalText;
-      alert('Connection error. Please try again.');
+      if (error && error.name === 'AbortError') {
+        alert('Request timed out. Please try again.');
+      } else if (error && error.message && error.message.toLowerCase().includes('json')) {
+        alert('Server error. Please try again in a moment.');
+      } else {
+        alert('Connection error. Please try again.');
+      }
     }
   };
 
