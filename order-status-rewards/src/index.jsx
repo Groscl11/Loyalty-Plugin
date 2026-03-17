@@ -1,10 +1,17 @@
+/**
+ * Show Points Earned On This Order — Order Status Page
+ * Logged-in: shows estimated points for the current order.
+ * Guest: shows a login prompt to view referral link.
+ */
+
 import React, { useState, useEffect } from 'react';
 import {
   reactExtension,
   Banner,
-  Button,
   BlockStack,
+  InlineStack,
   Text,
+  Link,
   Divider,
   useApi,
   useSettings,
@@ -15,8 +22,96 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 
 export default reactExtension(
   'purchase.order-status.block.render',
-  () => <OrderStatusRewards />
+  () => <PointsEarnedWidget />
 );
+
+function PointsEarnedWidget() {
+  const { order, shop } = useApi();
+  const settings = useSettings();
+
+  const [status, setStatus] = useState('loading'); // 'loading' | 'guest' | 'loaded' | 'error'
+  const [estimatedPoints, setEstimatedPoints] = useState(0);
+  const [pointsName, setPointsName] = useState('Points');
+
+  const headingText = settings.heading_text || 'Points Earned on This Order';
+  const referralRewardText = settings.referral_reward_text || 'bonus rewards';
+
+  const customerEmail = order?.customer?.email;
+  const shopDomain = shop?.myshopifyDomain;
+  const loginUrl = `https://${shopDomain}/account/login`;
+
+  // Order total (strip currency, parse as float)
+  const rawAmount = order?.totalPrice?.amount ?? order?.subtotalPrice?.amount ?? '0';
+  const orderTotal = parseFloat(typeof rawAmount === 'object' ? rawAmount.amount ?? 0 : rawAmount) || 0;
+
+  useEffect(() => {
+    if (!customerEmail) {
+      setStatus('guest');
+      return;
+    }
+    loadLoyaltyStatus();
+  }, []);
+
+  async function loadLoyaltyStatus() {
+    try {
+      const res = await fetch(
+        `${SUPABASE_URL}/functions/v1/get-loyalty-status?email=${encodeURIComponent(customerEmail)}&shop_domain=${encodeURIComponent(shopDomain)}`,
+        { headers: { Authorization: `Bearer ${SUPABASE_ANON_KEY}` } }
+      );
+      const data = await res.json();
+
+      if (data.error) {
+        setStatus('error');
+        return;
+      }
+
+      const earnRate = data.tier?.points_earn_rate ?? 1;
+      const earnDivisor = data.tier?.points_earn_divisor ?? 1;
+      const name = data.program?.points_name || 'Points';
+
+      const pts = Math.floor((orderTotal / earnDivisor) * earnRate);
+      setEstimatedPoints(pts);
+      setPointsName(name);
+      setStatus('loaded');
+    } catch {
+      setStatus('error');
+    }
+  }
+
+  if (status === 'loading') return null;
+  if (status === 'error') return null;
+
+  // ── Guest View ────────────────────────────────────────────────────────────
+  if (status === 'guest') {
+    return (
+      <Banner status="warning">
+        <BlockStack spacing="tight">
+          <Text>
+            <Link to={loginUrl} external>Login</Link>
+            {` to view your referral link and earn ${referralRewardText} on every successful referral`}
+          </Text>
+        </BlockStack>
+      </Banner>
+    );
+  }
+
+  // ── Logged-in View ────────────────────────────────────────────────────────
+  return (
+    <BlockStack spacing="base">
+      <Divider />
+      <BlockStack spacing="tight">
+        <Text size="small" appearance="subdued">{headingText}</Text>
+        <Text size="large" emphasis="bold">
+          You will earn {estimatedPoints} {pointsName}
+        </Text>
+        <Text size="small" appearance="subdued">
+          {pointsName} will be rewarded once order is paid
+        </Text>
+      </BlockStack>
+    </BlockStack>
+  );
+}
+
 
 function OrderStatusRewards() {
   const { order, shop } = useApi();

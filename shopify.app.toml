@@ -8,6 +8,10 @@ embedded = false
 [webhooks]
 api_version = "2026-01"
 
+[[webhooks.subscriptions]]
+topics = ["orders/create", "orders/paid"]
+uri = "https://lizgppzyyljqbmzdytia.supabase.co/functions/v1/shopify-order-webhook"
+
 [access_scopes]
 # Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
 scopes = "write_checkouts,read_checkouts,read_customers,write_customers,read_price_rules,write_price_rules,read_discounts,write_discounts,read_orders,write_orders,read_products,write_products,read_script_tags,write_script_tags,read_themes,write_themes"
@@ -24,3 +28,21 @@ type = "theme"
 name = "Loyalty Rewards Widget"
 handle = "loyalty-widget"
 directory = "extensions/loyalty-widget"
+
+[[extensions]]
+type = "ui_extension"
+name = "Referral Widget"
+handle = "referral-widget"
+directory = "extensions/referral-widget"
+
+[[extensions]]
+type = "ui_extension"
+name = "Show Points Earned On This Order"
+handle = "order-status-rewards"
+directory = "extensions/points-earned"
+
+[[extensions]]
+type = "ui_extension"
+name = "Order Rewards & Referral"
+handle = "order-rewards"
+directory = "extensions/order-rewards"

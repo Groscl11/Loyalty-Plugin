@@ -1,0 +1,22 @@
+api_version = "2025-07"
+
+[[extensions]]
+uid = "236eb438-d303-0626-98c5-45433a02f10d"
+type = "ui_extension"
+name = "Referral Widget"
+handle = "referral-widget"
+
+[[extensions.targeting]]
+module = "./src/index.jsx"
+target = "purchase.thank-you.block.render"
+
+[extensions.capabilities]
+network_access = true
+api_access = true
+
+[extensions.settings]
+[[extensions.settings.fields]]
+key = "referral_reward_text"
+type = "single_line_text_field"
+name = "Referral Reward Text"
+description = "e.g. '15% Off Coupon' shown in guest login prompt and logged-in banner"

@@ -1,0 +1,107 @@
+{
+  "info": {
+    "_postman_id": "b8a9d7f8-0000-4000-8000-000000000000",
+    "name": "Supabase Edge Functions - Collection",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Auto-generated Postman collection for Supabase Edge Functions in this repo. Replace {{baseUrl}} and {{anon_key}} with your values."
+  },
+  "item": [
+    {
+      "name": "adjust-loyalty-points",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{anon_key}}" },
+          { "key": "apikey", "value": "{{anon_key}}" }
+        ],
+        "body": { "mode": "raw", "raw": "{}" },
+        "url": { "raw": "{{baseUrl}}/functions/v1/adjust-loyalty-points" }
+      }
+    },
+    {
+      "name": "bulk-reprocess-orders",
+      "request": { "method": "POST", "header": [ { "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{anon_key}}" } ], "body": { "mode": "raw", "raw": "{}" }, "url": { "raw": "{{baseUrl}}/functions/v1/bulk-reprocess-orders" } }
+    },
+    {
+      "name": "check-order-1135",
+      "request": { "method": "POST", "header": [ { "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{anon_key}}" } ], "body": { "mode": "raw", "raw": "{}" }, "url": { "raw": "{{baseUrl}}/functions/v1/check-order-1135" } }
+    },
+    {
+      "name": "claim-social-action",
+      "request": { "method": "POST", "header": [ { "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{anon_key}}" } ], "body": { "mode": "raw", "raw": "{ \"email\": \"customer@example.com\", \"shop_domain\": \"store.myshopify.com\", \"rule_id\": \"er1\" }" }, "url": { "raw": "{{baseUrl}}/functions/v1/claim-social-action" } }
+    },
+    {
+      "name": "diagnostic-order",
+      "request": { "method": "POST", "header": [ { "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{anon_key}}" } ], "body": { "mode": "raw", "raw": "{}" }, "url": { "raw": "{{baseUrl}}/functions/v1/diagnostic-order" } }
+    },
+    {
+      "name": "get-client-config",
+      "request": { "method": "GET", "header": [ { "key": "Authorization", "value": "Bearer {{anon_key}}" } ], "url": { "raw": "{{baseUrl}}/functions/v1/get-client-config" } }
+    },
+    {
+      "name": "get-customer-rewards",
+      "request": { "method": "POST", "header": [ { "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{anon_key}}" } ], "body": { "mode": "raw", "raw": "{ \"customer_email\": \"customer@example.com\", \"shop_domain\": \"store.myshopify.com\" }" }, "url": { "raw": "{{baseUrl}}/functions/v1/get-customer-rewards" } }
+    },
+    {
+      "name": "get-earning-rules",
+      "request": { "method": "GET", "header": [ { "key": "Authorization", "value": "Bearer {{anon_key}}" } ], "url": { "raw": "{{baseUrl}}/functions/v1/get-earning-rules" } }
+    },
+    {
+      "name": "get-loyalty-status",
+      "request": { "method": "POST", "header": [ { "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{anon_key}}" } ], "body": { "mode": "raw", "raw": "{ \"email\": \"customer@example.com\", \"shop_domain\": \"store.myshopify.com\" }" }, "url": { "raw": "{{baseUrl}}/functions/v1/get-loyalty-status" } }
+    },
+    {
+      "name": "get-member-rewards",
+      "request": { "method": "GET", "header": [ { "key": "Authorization", "value": "Bearer {{anon_key}}" } ], "url": { "raw": "{{baseUrl}}/functions/v1/get-member-rewards" } }
+    },
+    {
+      "name": "get-rewards-catalog",
+      "request": { "method": "GET", "header": [ { "key": "Authorization", "value": "Bearer {{anon_key}}" } ], "url": { "raw": "{{baseUrl}}/functions/v1/get-rewards-catalog" } }
+    },
+    {
+      "name": "get-widget-config",
+      "request": { "method": "GET", "header": [ { "key": "Authorization", "value": "Bearer {{anon_key}}" } ], "url": { "raw": "{{baseUrl}}/functions/v1/get-widget-config" } }
+    },
+    {
+      "name": "redeem-loyalty-points",
+      "request": { "method": "POST", "header": [ { "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{anon_key}}" } ], "body": { "mode": "raw", "raw": "{ \"email\": \"customer@example.com\", \"shop_domain\": \"store.myshopify.com\", \"reward_id\": \"r1\", \"points\": 500 }" }, "url": { "raw": "{{baseUrl}}/functions/v1/redeem-loyalty-points" } }
+    },
+    {
+      "name": "register-loyalty-member",
+      "request": { "method": "POST", "header": [ { "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{anon_key}}" } ], "body": { "mode": "raw", "raw": "{ \"email\": \"customer@example.com\", \"shop_domain\": \"store.myshopify.com\" }" }, "url": { "raw": "{{baseUrl}}/functions/v1/register-loyalty-member" } }
+    },
+    {
+      "name": "shopify-order-webhook",
+      "request": { "method": "POST", "header": [ { "key": "Content-Type", "value": "application/json" } ], "body": { "mode": "raw", "raw": "{}" }, "url": { "raw": "{{baseUrl}}/functions/v1/shopify-order-webhook" } }
+    },
+    {
+      "name": "submit-action-reward",
+      "request": { "method": "POST", "header": [ { "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{anon_key}}" } ], "body": { "mode": "raw", "raw": "{}" }, "url": { "raw": "{{baseUrl}}/functions/v1/submit-action-reward" } }
+    },
+    {
+      "name": "submit-survey-response",
+      "request": { "method": "POST", "header": [ { "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{anon_key}}" } ], "body": { "mode": "raw", "raw": "{}" }, "url": { "raw": "{{baseUrl}}/functions/v1/submit-survey-response" } }
+    },
+    {
+      "name": "track-widget-event",
+      "request": { "method": "POST", "header": [ { "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{anon_key}}" } ], "body": { "mode": "raw", "raw": "{}" }, "url": { "raw": "{{baseUrl}}/functions/v1/track-widget-event" } }
+    },
+    {
+      "name": "update-customer-profile",
+      "request": { "method": "POST", "header": [ { "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{anon_key}}" } ], "body": { "mode": "raw", "raw": "{}" }, "url": { "raw": "{{baseUrl}}/functions/v1/update-customer-profile" } }
+    },
+    {
+      "name": "update-member-profile",
+      "request": { "method": "POST", "header": [ { "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{anon_key}}" } ], "body": { "mode": "raw", "raw": "{}" }, "url": { "raw": "{{baseUrl}}/functions/v1/update-member-profile" } }
+    },
+    {
+      "name": "update-merchant-config",
+      "request": { "method": "POST", "header": [ { "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{anon_key}}" } ], "body": { "mode": "raw", "raw": "{}" }, "url": { "raw": "{{baseUrl}}/functions/v1/update-merchant-config" } }
+    }
+  ],
+  "variable": [
+    { "key": "baseUrl", "value": "https://lizgppzyyljqbmzdytia.supabase.co" },
+    { "key": "anon_key", "value": "" }
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "id": "supabase-env-1",
+  "name": "Supabase Edge Functions",
+  "values": [
+    { "key": "baseUrl", "value": "https://lizgppzyyljqbmzdytia.supabase.co", "enabled": true },
+    { "key": "anon_key", "value": "E5yJHY4mjOvLiqZCfCp9vnNC7xsRAlBSdW55YE2RPC0", "enabled": true }
+  ],
+  "timestamp": 0,
+  "synced": false
+}

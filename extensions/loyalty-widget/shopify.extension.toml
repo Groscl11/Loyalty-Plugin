@@ -1,0 +1,263 @@
+# Shopify Loyalty Widget Extension — V6
+# This creates an embeddable loyalty rewards widget for Shopify storefronts
+
+api_version = "2024-01"
+name = "loyalty-widget"
+
+uid = "63dc22e1-27da-358d-1f2a-1e6d9b60e4b66a03a917"
+
+type = "theme"
+
+[[blocks]]
+type = "app"
+name = "Loyalty Rewards Widget"
+
+[blocks.settings]
+
+# ── Legacy settings (kept for backward compatibility) ──────────────────
+
+[[blocks.settings.fields]]
+type = "checkbox"
+id = "show_floating_button"
+label = "Show Floating Widget Button"
+default = true
+
+[[blocks.settings.fields]]
+type = "select"
+id = "button_position"
+label = "Button Position"
+default = "bottom-right"
+options = [
+  { label = "Bottom Right", value = "bottom-right" },
+  { label = "Bottom Left", value = "bottom-left" },
+  { label = "Top Right", value = "top-right" },
+  { label = "Top Left", value = "top-left" }
+]
+
+[[blocks.settings.fields]]
+type = "color"
+id = "primary_color"
+label = "Primary Color"
+default = "#3B82F6"
+
+[[blocks.settings.fields]]
+type = "color"
+id = "accent_color"
+label = "Accent Color (legacy)"
+default = "#10B981"
+
+[[blocks.settings.fields]]
+type = "text"
+id = "points_name"
+label = "Points Name (legacy)"
+default = "Rewards Points"
+
+[[blocks.settings.fields]]
+type = "checkbox"
+id = "auto_redeem"
+label = "Enable Auto-Redeem"
+default = false
+
+# ── SECTION: Branding ──────────────────────────────────────────────────
+
+[[blocks.settings.fields]]
+type = "color"
+id = "accent_color_v6"
+label = "Accent colour"
+default = "#6366f1"
+info = "Used for buttons, highlights, and tier progress bars"
+
+[[blocks.settings.fields]]
+type = "color"
+id = "hero_banner_bg"
+label = "Guest hero banner background"
+default = "#111111"
+info = "Background of the banner shown to non-logged-in visitors"
+
+[[blocks.settings.fields]]
+type = "select"
+id = "hero_text_color"
+label = "Guest hero text colour"
+default = "#ffffff"
+options = [
+  { value = "#ffffff", label = "White" },
+  { value = "#111827", label = "Dark" }
+]
+
+[[blocks.settings.fields]]
+type = "select"
+id = "font_family"
+label = "Widget font"
+default = "inherit"
+options = [
+  { value = "inherit",                         label = "Match store theme" },
+  { value = "'DM Sans', sans-serif",           label = "DM Sans (clean)" },
+  { value = "'Sora', sans-serif",              label = "Sora (modern)" },
+  { value = "'Plus Jakarta Sans', sans-serif", label = "Jakarta (friendly)" },
+  { value = "'Outfit', sans-serif",            label = "Outfit (bold)" },
+  { value = "'Inter', sans-serif",             label = "Inter (neutral)" }
+]
+
+# ── SECTION: Pill Button ───────────────────────────────────────────────
+
+[[blocks.settings.fields]]
+type = "select"
+id = "widget_position"
+label = "Widget position"
+default = "left"
+options = [
+  { value = "left",  label = "Bottom left"  },
+  { value = "right", label = "Bottom right" }
+]
+
+[[blocks.settings.fields]]
+type = "text"
+id = "widget_label"
+label = "Pill button label"
+default = "Rewards"
+info = "Max 14 characters. Leave blank to show icon only."
+
+[[blocks.settings.fields]]
+type = "checkbox"
+id = "show_points_on_button"
+label = "Show points balance on button (members only)"
+default = true
+
+[[blocks.settings.fields]]
+type = "checkbox"
+id = "shake_on_load"
+label = "Shake button on page load"
+default = true
+
+[[blocks.settings.fields]]
+type = "range"
+id = "shake_interval_sec"
+label = "Shake repeat interval (seconds)"
+min = 5
+max = 60
+step = 5
+default = 10
+
+# ── SECTION: Messaging ────────────────────────────────────────────────
+
+[[blocks.settings.fields]]
+type = "text"
+id = "points_noun"
+label = "Points name"
+default = "Points"
+info = "e.g. Stars, Coins, Gems, Credits"
+
+[[blocks.settings.fields]]
+type = "text"
+id = "points_abbrev"
+label = "Points abbreviation"
+default = "pts"
+info = "e.g. pts, ⭐, 💎 — shown inline next to numbers"
+
+[[blocks.settings.fields]]
+type = "text"
+id = "reward_noun"
+label = "Reward name"
+default = "Reward"
+info = "e.g. Gift, Perk, Bonus"
+
+[[blocks.settings.fields]]
+type = "text"
+id = "tier_bronze_name"
+label = "Tier 1 name"
+default = "Bronze"
+
+[[blocks.settings.fields]]
+type = "text"
+id = "tier_silver_name"
+label = "Tier 2 name"
+default = "Silver"
+
+[[blocks.settings.fields]]
+type = "text"
+id = "tier_gold_name"
+label = "Tier 3 name"
+default = "Gold"
+
+[[blocks.settings.fields]]
+type = "text"
+id = "tier_platinum_name"
+label = "Tier 4 name"
+default = "Platinum"
+
+[[blocks.settings.fields]]
+type = "text"
+id = "welcome_message"
+label = "Member welcome message"
+default = "Hi {firstName} 👋"
+info = "Use {firstName} as a placeholder for customer's name"
+
+[[blocks.settings.fields]]
+type = "text"
+id = "guest_headline"
+label = "Guest panel headline"
+default = "Earn rewards on every purchase"
+
+[[blocks.settings.fields]]
+type = "text"
+id = "guest_subline"
+label = "Guest panel subline"
+default = "Points · Partner offers · Milestone gifts"
+
+# ── SECTION: Features ─────────────────────────────────────────────────
+
+[[blocks.settings.fields]]
+type = "checkbox"
+id = "show_refer_tab"
+label = "Show Refer & Earn tab"
+default = true
+
+[[blocks.settings.fields]]
+type = "checkbox"
+id = "show_leaderboard"
+label = "Show referral leaderboard"
+default = true
+
+[[blocks.settings.fields]]
+type = "checkbox"
+id = "show_survey"
+label = "Show survey earn action"
+default = true
+
+[[blocks.settings.fields]]
+type = "checkbox"
+id = "show_partner_brands"
+label = "Show partner brand redemptions"
+default = true
+
+[[blocks.settings.fields]]
+type = "checkbox"
+id = "enable_free_products"
+label = "Enable free product redemption (requires Shopify Functions)"
+default = true
+
+[[blocks.settings.fields]]
+type = "checkbox"
+id = "show_milestones"
+label = "Show milestones tab"
+default = true
+
+# ── SECTION: Leaderboard Prizes ───────────────────────────────────────
+
+[[blocks.settings.fields]]
+type = "text"
+id = "prize_1st"
+label = "1st place prize"
+default = "₹500 voucher + 1000 pts"
+
+[[blocks.settings.fields]]
+type = "text"
+id = "prize_2nd"
+label = "2nd place prize"
+default = "₹200 voucher + 500 pts"
+
+[[blocks.settings.fields]]
+type = "text"
+id = "prize_3rd"
+label = "3rd place prize"
+default = "₹100 voucher + 200 pts"
