@@ -186,7 +186,7 @@ async function fetchCustomerSession(shopDomain, customerEmail) {
   }
 
   const result = {
-    customerId:       data.customer_id    || data.customerId    || null,
+    customerId:       data.customer_id    || data.customerId    || data.member_user_id || null,
     firstName:        data.first_name     || data.firstName     || data.customer_first_name || 'there',
     email:            customerEmail,
     phone:            data.phone          || null,
@@ -301,8 +301,22 @@ async function fetchMemberRewards(shopDomain, customerEmail, customerId) {
       `${SUPABASE_URL}/functions/v1/get-member-rewards?${params}`
     );
 
+    // marketplace_offer rewards are partner/brand offers — show in Partners tab
+    // store_discount rewards are the merchant's own coupons — show in Store tab
+    const rawDiscounts = data.discount_rewards || [];
+    const storeDiscounts     = rawDiscounts.filter(r => r.offer_type === 'store_discount');
+    const marketplaceDiscounts = rawDiscounts.filter(r => r.offer_type !== 'store_discount');
+
+    // Copy existingCodes for marketplace items into existingBrandCodes so
+    // the Partners tab can detect already-claimed codes
+    const rawExistingCodes = data.existing_codes || {};
+    const mergedBrandCodes = { ...(data.existing_brand_codes || {}) };
+    for (const r of marketplaceDiscounts) {
+      if (rawExistingCodes[r.id]) mergedBrandCodes[r.id] = rawExistingCodes[r.id];
+    }
+
     const result = {
-      discountRewards: (data.discount_rewards || []).map(r => ({
+      discountRewards: storeDiscounts.map(r => ({
         id:            r.id,
         type:          'discount',
         title:         r.title,
@@ -314,23 +328,44 @@ async function fetchMemberRewards(shopDomain, customerEmail, customerId) {
         currency:      r.currency || null,
         terms:         r.terms_conditions || null,
       })),
-      brandRewards: (data.brand_rewards || []).map(r => ({
-        id:            r.config_id,
-        rewardId:      r.reward_id,
-        type:          'partner',
-        title:         r.title,
-        description:   r.description || r.value_description || null,
-        pointsCost:    r.points_cost,
-        discountValue: r.value_description || '',
-        canRedeem:     r.can_redeem ?? true,
-        brandName:     r.brand_name  || null,
-        brandLogo:     r.brand_logo  || null,
-        brandUrl:      r.brand_website_url || null,
-        imageUrl:      r.image_url   || null,
-        couponType:    r.coupon_type || 'unique',
-        genericCode:   r.generic_coupon_code || null,
-        terms:         r.terms_conditions || null,
-      })),
+      brandRewards: [
+        // partner_voucher brand rewards from the backend
+        ...(data.brand_rewards || []).map(r => ({
+          id:            r.config_id,
+          rewardId:      r.reward_id,
+          type:          'partner',
+          title:         r.title,
+          description:   r.description || r.value_description || null,
+          pointsCost:    r.points_cost,
+          discountValue: r.value_description || '',
+          canRedeem:     r.can_redeem ?? true,
+          brandName:     r.brand_name  || null,
+          brandLogo:     r.brand_logo  || null,
+          brandUrl:      r.brand_website_url || null,
+          imageUrl:      r.image_url   || null,
+          couponType:    r.coupon_type || 'unique',
+          genericCode:   r.generic_coupon_code || null,
+          terms:         r.terms_conditions || null,
+        })),
+        // marketplace_offer rewards also appear in the Partners tab
+        ...marketplaceDiscounts.map(r => ({
+          id:            r.distribution_id || r.id,
+          rewardId:      r.id,
+          type:          'partner',
+          title:         r.title,
+          description:   r.description || null,
+          pointsCost:    r.points_cost,
+          discountValue: r.discount_value || '',
+          canRedeem:     r.can_redeem ?? true,
+          brandName:     null,
+          brandLogo:     null,
+          brandUrl:      null,
+          imageUrl:      null,
+          couponType:    r.coupon_type || 'unique',
+          genericCode:   r.generic_coupon_code || null,
+          terms:         r.terms_conditions || null,
+        })),
+      ],
       manualRewards: (data.manual_rewards || []).map(r => ({
         id:          r.id,
         type:        'free',
@@ -340,8 +375,8 @@ async function fetchMemberRewards(shopDomain, customerEmail, customerId) {
         canRedeem:   r.can_redeem ?? true,
         terms:       r.terms_conditions || null,
       })),
-      existingCodes:      data.existing_codes       || {},
-      existingBrandCodes: data.existing_brand_codes || {},
+      existingCodes:      rawExistingCodes,
+      existingBrandCodes: mergedBrandCodes,
     };
 
     cacheSet(cacheKey, result);

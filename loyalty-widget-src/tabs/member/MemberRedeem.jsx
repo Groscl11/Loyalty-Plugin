@@ -31,7 +31,7 @@ const MemberRedeem = React.memo(function MemberRedeem({ data, config }) {
   const handleRedeem = useCallback(async (item) => {
     // If already claimed, show existing code in modal
     const existingCode = item.type === 'partner'
-      ? existingBrandCodes[item.rewardId]
+      ? (existingBrandCodes[item.rewardId] || existingBrandCodes[item.id] || existingCodes[item.rewardId] || existingCodes[item.id])
       : existingCodes[item.id];
 
     if (existingCode) {
@@ -60,6 +60,7 @@ const MemberRedeem = React.memo(function MemberRedeem({ data, config }) {
       // the correct offer_distributions row (and authoritative points_cost).
       const redeemBody = {
         member_user_id: customer.customerId || customer.email,
+        email:          customer.email || null,
         shop_domain:    shopDomain,
         reward_id:      item.type === 'partner' ? item.rewardId : item.id,
         points:         item.pointsCost,
@@ -198,7 +199,7 @@ const MemberRedeem = React.memo(function MemberRedeem({ data, config }) {
                 ctaLabel="Claim"
                 accentColor="#10b981"
                 onAction={() => handleRedeem(item)}
-                existingCode={existingBrandCodes[item.rewardId] || null}
+                existingCode={existingBrandCodes[item.rewardId] || existingBrandCodes[item.id] || existingCodes[item.rewardId] || existingCodes[item.id] || null}
               />
             ))}
           </>
