@@ -62,6 +62,7 @@ const MemberRedeem = React.memo(function MemberRedeem({ data, config }) {
         member_user_id: customer.customerId || customer.email,
         shop_domain:    shopDomain,
         reward_id:      item.type === 'partner' ? item.rewardId : item.id,
+        points:         item.pointsCost,
       };
       if (item.type === 'partner' && item.id) {
         redeemBody.distribution_id = item.id; // item.id is config_id (offer_distributions.id)
@@ -182,7 +183,13 @@ const MemberRedeem = React.memo(function MemberRedeem({ data, config }) {
 
         {subTab === 'partners' && (
           <>
-            {partnerItems.map(item => (
+            {partnerItems.length === 0 ? (
+              <div style={{ textAlign: 'center', color: '#9ca3af', fontSize: 13, paddingTop: 40 }}>
+                <div style={{ fontSize: 28, marginBottom: 10 }}>🤝</div>
+                <div style={{ fontWeight: 600, color: '#374151', marginBottom: 6 }}>No partner offers right now</div>
+                <div style={{ fontSize: 11, lineHeight: 1.5 }}>Check back soon for exclusive partner rewards.</div>
+              </div>
+            ) : partnerItems.map(item => (
               <RedeemCard
                 key={item.id}
                 item={item}

@@ -43,7 +43,8 @@ const MemberWallet = React.memo(function MemberWallet({ data, config, setTab }) 
   const claimedFromRedeem = [];
   if (redeemCat.existingCodes) {
     Object.entries(redeemCat.existingCodes).forEach(([rewardId, entry]) => {
-      if (entry?.code && !wallet.some(w => w.code === entry.code)) {
+      const codeValue = typeof entry === 'string' ? entry : (entry?.code || entry?.discount_code || null);
+      if (codeValue && !wallet.some(w => w.code === codeValue)) {
         const reward = (redeemCat.discountRewards || []).find(r => r.id === rewardId)
                     || (redeemCat.manualRewards   || []).find(r => r.id === rewardId);
         if (reward) {
@@ -51,7 +52,7 @@ const MemberWallet = React.memo(function MemberWallet({ data, config, setTab }) 
             id:           `claimed_${rewardId}`,
             type:         reward.type || 'discount',
             status:       'active',
-            code:         entry.code,
+            code:         codeValue,
             title:        reward.title,
             discountValue: reward.discountValue || '',
             expiresAt:    null,
@@ -62,14 +63,15 @@ const MemberWallet = React.memo(function MemberWallet({ data, config, setTab }) 
   }
   if (redeemCat.existingBrandCodes) {
     Object.entries(redeemCat.existingBrandCodes).forEach(([rewardId, entry]) => {
-      if (entry?.code && !wallet.some(w => w.code === entry.code)) {
+      const codeValue = typeof entry === 'string' ? entry : (entry?.code || entry?.discount_code || null);
+      if (codeValue && !wallet.some(w => w.code === codeValue)) {
         const reward = (redeemCat.brandRewards || []).find(r => r.rewardId === rewardId);
         if (reward) {
           claimedFromRedeem.push({
             id:           `claimed_brand_${rewardId}`,
             type:         'partner',
             status:       'active',
-            code:         entry.code,
+            code:         codeValue,
             title:        reward.title,
             brandName:    reward.brandName || null,
             brandUrl:     reward.brandUrl  || null,

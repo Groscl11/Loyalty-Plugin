@@ -414,8 +414,8 @@ async function fetchHistory(shopDomain, customerEmail, rawSession) {
     const result = txns.map((t, i) => {
       // API stores points_amount as always-positive; transaction_type tells direction
       const rawAmt  = t.points_amount ?? t.points_delta ?? t.delta ?? t.points ?? 0;
-      const txType  = t.transaction_type || (rawAmt < 0 ? 'redeem' : 'earn');
-      const isRedeem = txType === 'redeem';
+      const txType  = t.transaction_type || t.type || (rawAmt < 0 ? 'redeem' : 'earn');
+      const isRedeem = /redeem|debit|redemption|redeem_points/i.test(txType);
       const delta   = isRedeem ? -Math.abs(rawAmt) : Math.abs(rawAmt);
       return {
         id:    t.id    || `t${i}`,
