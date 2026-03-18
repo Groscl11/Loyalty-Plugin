@@ -64,6 +64,7 @@ export function cacheClear(key) {
 export function invalidateCustomerSession() {
   try {
     sessionStorage.removeItem('goself:customer_session');
+    sessionStorage.removeItem('goself:customer_session_v2');
     // Also clear related data that depends on session
     sessionStorage.removeItem('goself:referral_stats');
   } catch { /* ignore */ }

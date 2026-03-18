@@ -170,7 +170,7 @@ const MOCK_PARTNER_BRANDS = [
 // ---------------------------------------------------------------------------
 
 async function fetchCustomerSession(shopDomain, customerEmail) {
-  const cacheKey = 'customer_session';
+  const cacheKey = 'customer_session_v2';   // bumped: forces re-fetch so customerId is populated
   const cached = cacheGet(cacheKey);
   if (cached) return cached;
 
@@ -784,7 +784,7 @@ export function useCustomerData() {
       // Wallet depends on rawSession — re-fetch session then re-derive wallet
       if (domain === 'wallet' && customerEmail) {
         try {
-          try { sessionStorage.removeItem('goself:customer_session'); } catch { /* ignore */ }
+          try { sessionStorage.removeItem('goself:customer_session'); sessionStorage.removeItem('goself:customer_session_v2'); } catch { /* ignore */ }
           const customerData = await fetchCustomerSession(shopDomain, customerEmail);
           setCustomer(customerData);
           const walletData = await fetchWallet(shopDomain, customerEmail, customerData._raw || null);
@@ -798,7 +798,7 @@ export function useCustomerData() {
       // member_rewards refetch — re-fetch with current customer id
       if (domain === 'member_rewards' && customerEmail) {
         try {
-          const cachedCustomer = cacheGet('customer_session');
+          const cachedCustomer = cacheGet('customer_session_v2') || cacheGet('customer_session');
           const rewardsData = await fetchMemberRewards(
             shopDomain,
             customerEmail,

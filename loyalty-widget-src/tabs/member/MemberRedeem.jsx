@@ -59,7 +59,7 @@ const MemberRedeem = React.memo(function MemberRedeem({ data, config }) {
       // distribution_id is passed for partner rewards so the server can resolve
       // the correct offer_distributions row (and authoritative points_cost).
       const redeemBody = {
-        member_user_id: customer.customerId || customer.email,
+        member_user_id: customer.customerId || null,   // UUID only — null makes backend use email fallback
         email:          customer.email || null,
         shop_domain:    shopDomain,
         reward_id:      item.type === 'partner' ? item.rewardId : item.id,
