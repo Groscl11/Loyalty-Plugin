@@ -8,7 +8,7 @@ import React, { useCallback } from 'react';
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from '../../utils/supabase.js';
 
 // ── Helper: Claim action/survey reward ────────────────────────────────────────
-async function handleSocialActionClaim(rule: any, shopDomain: string, onClaimSuccess?: () => void) {
+async function handleSocialActionClaim(rule, shopDomain, onClaimSuccess) {
   try {
     // Get customer email from multiple sources
     const email = (

@@ -142,7 +142,7 @@ const MemberHome = React.memo(function MemberHome({
         </button>
 
         {/* Survey nudge */}
-        {config.showSurvey && survey?.questions?.length > 0 && (
+        {config.showSurveyOnHome && survey?.questions?.length > 0 && (
           <button
             onClick={openSurvey}
             style={{

@@ -239,49 +239,23 @@ async function fetchMerchantConfig(shopDomain, customerData) {
       gold:     5000,
       platinum: 10000,
     },
+    // Feature flags — read from backend raw data when present, default to true
+    showReferTab:       raw.show_refer_tab       ?? true,
+    showLeaderboard:    raw.show_leaderboard     ?? true,
+    showSurvey:         raw.show_survey          ?? true,
+    showSurveyOnHome:   raw.show_survey_on_home  ?? false,
+    showPartnerBrands:  raw.show_partner_brands  ?? true,
+    enableFreeProducts: raw.enable_free_products ?? true,
+    showMilestones:     raw.show_milestones      ?? true,
   };
 
   cacheSet(cacheKey, result);
   return result;
 }
 
-async function fetchCatalog(shopDomain, customerEmail) {
-  const cacheKey = 'rewards_catalog';
-  const cached = cacheGet(cacheKey);
-  if (cached) return cached;
-
-  try {
-    const data = await apiFetch(
-      `${SUPABASE_URL}/functions/v1/get-customer-rewards`,
-      {
-        method: 'POST',
-        body: JSON.stringify({ shop_domain: shopDomain, customer_email: customerEmail || undefined }),
-      }
-    );
-    const rewards = data.rewards || data.catalog || null;
-    if (rewards && rewards.length > 0) {
-      // Normalise to internal shape
-      const result = rewards.map(r => ({
-        id:            r.id,
-        type:          r.type || 'discount',
-        title:         r.name || r.title,
-        pointsCost:    r.points_cost ?? r.value_amount ?? 500,
-        discountValue: r.discount_value || r.description || '',
-        brandName:     r.brand_name || null,
-        brandUrl:      r.brand_url  || null,
-        code:          r.code       || null,
-      }));
-      cacheSet(cacheKey, result);
-      return result;
-    }
-  } catch (e) {
-    console.warn('[GoSelf] get-customer-rewards failed, using mock catalog:', e.message);
-  }
-
-  const result = MOCK_CATALOG;
-  cacheSet(cacheKey, result);
-  return result;
-}
+// fetchCatalog removed — use fetchMemberRewards (get-member-rewards) instead,
+// which returns properly grouped discount_rewards / brand_rewards / manual_rewards
+// via offer_distributions JOIN rewards.
 
 // ---------------------------------------------------------------------------
 // fetchEarnRules — calls get-earning-rules (backend source of truth)
@@ -492,7 +466,7 @@ async function fetchReferrals(shopDomain, customerEmail, rawSession) {
   return result;
 }
 
-async function fetchLeaderboard(shopDomain, rawSession) {
+async function fetchLeaderboard(shopDomain, rawSession, isAuthenticated) {
   const cacheKey = 'leaderboard';
   const cached = cacheGet(cacheKey);
   if (cached) return cached;
@@ -510,6 +484,12 @@ async function fetchLeaderboard(shopDomain, rawSession) {
     }));
     cacheSet(cacheKey, result);
     return result;
+  }
+
+  // Authenticated users with no leaderboard data get an empty list, not mock data
+  if (isAuthenticated) {
+    cacheSet(cacheKey, []);
+    return [];
   }
 
   cacheSet(cacheKey, MOCK_LEADERBOARD);
@@ -536,6 +516,12 @@ async function fetchMilestones(shopDomain, customerEmail, rawSession) {
     return result;
   }
 
+  // Authenticated users with no milestones get an empty list, not mock data
+  if (customerEmail) {
+    cacheSet(cacheKey, []);
+    return [];
+  }
+
   cacheSet(cacheKey, MOCK_MILESTONES);
   return MOCK_MILESTONES;
 }
@@ -549,6 +535,13 @@ async function fetchSurvey(shopDomain, customerEmail, rawSession) {
   if (s && s.questions && s.questions.length > 0) {
     cacheSet(cacheKey, s);
     return s;
+  }
+
+  // Authenticated users with no active survey get an empty survey, not mock data
+  if (customerEmail) {
+    const empty = { questions: [], rewardPts: 0, headline: '' };
+    cacheSet(cacheKey, empty);
+    return empty;
   }
 
   cacheSet(cacheKey, MOCK_SURVEY);
@@ -629,7 +622,6 @@ export function useCustomerData() {
   const [error, setError]           = useState(null);
   const [merchant, setMerchant]     = useState({});
   const [customer, setCustomer]     = useState({});
-  const [catalog, setCatalog]       = useState([]);
   const [wallet, setWallet]         = useState([]);
   const [history, setHistory]       = useState([]);
   const [referrals, setReferrals]   = useState([]);
@@ -683,17 +675,15 @@ export function useCustomerData() {
         }
       }
 
-      // ── 2. Merchant config, catalog, earn rules, member rewards in parallel ─
-      const [merchantResult, catalogResult, earnRulesResult, memberRewardsResult] = await Promise.allSettled([
+      // ── 2. Merchant config, earn rules, member rewards in parallel ────────
+      const [merchantResult, earnRulesResult, memberRewardsResult] = await Promise.allSettled([
         fetchMerchantConfig(shopDomain, customerData),
-        fetchCatalog(shopDomain, customerEmail),
         fetchEarnRules(shopDomain, customerData?.customerId ?? null),
         customerEmail
           ? fetchMemberRewards(shopDomain, customerEmail, customerData?.customerId ?? null)
           : Promise.resolve(null),
       ]);
       if (merchantResult.status      === 'fulfilled') setMerchant(merchantResult.value);
-      if (catalogResult.status       === 'fulfilled') setCatalog(catalogResult.value);
       if (earnRulesResult.status     === 'fulfilled' && earnRulesResult.value) setEarnRules(earnRulesResult.value);
       if (memberRewardsResult.status === 'fulfilled' && memberRewardsResult.value) setRedeemCatalog(memberRewardsResult.value);
 
@@ -707,7 +697,7 @@ export function useCustomerData() {
             fetchHistory(shopDomain, customerEmail, rawSession),
             fetchReferrals(shopDomain, customerEmail, rawSession),
             fetchSurvey(shopDomain, customerEmail, rawSession),
-            fetchLeaderboard(shopDomain, rawSession),
+            fetchLeaderboard(shopDomain, rawSession, true /* isAuthenticated */),
             fetchMilestones(shopDomain, customerEmail, rawSession),
           ]);
 
@@ -718,9 +708,9 @@ export function useCustomerData() {
         if (leaderboardResult.status === 'fulfilled') setLeaderboard(leaderboardResult.value);
         if (milestonesResult.status  === 'fulfilled') setMilestones(milestonesResult.value);
       } else {
-        // Guest: still fetch public leaderboard
+        // Guest: fetch public leaderboard (mock fallback is fine for guests)
         try {
-          const lb = await fetchLeaderboard(shopDomain, null);
+          const lb = await fetchLeaderboard(shopDomain, null, false /* isAuthenticated */);
           setLeaderboard(lb);
         } catch (e) { console.warn('[GoSelf] leaderboard fetch failed:', e.message); }
       }
@@ -755,6 +745,35 @@ export function useCustomerData() {
           console.warn('[GoSelf] Manual refetch failed:', e.message);
         }
       }
+
+      // Wallet depends on rawSession — re-fetch session then re-derive wallet
+      if (domain === 'wallet' && customerEmail) {
+        try {
+          try { sessionStorage.removeItem('goself:customer_session'); } catch { /* ignore */ }
+          const customerData = await fetchCustomerSession(shopDomain, customerEmail);
+          setCustomer(customerData);
+          const walletData = await fetchWallet(shopDomain, customerEmail, customerData._raw || null);
+          setWallet(walletData);
+          console.log('[GoSelf] Wallet refetch complete, items:', walletData.length);
+        } catch (e) {
+          console.warn('[GoSelf] wallet refetch failed:', e.message);
+        }
+      }
+
+      // member_rewards refetch — re-fetch with current customer id
+      if (domain === 'member_rewards' && customerEmail) {
+        try {
+          const cachedCustomer = cacheGet('customer_session');
+          const rewardsData = await fetchMemberRewards(
+            shopDomain,
+            customerEmail,
+            cachedCustomer?.customerId ?? null
+          );
+          setRedeemCatalog(rewardsData);
+        } catch (e) {
+          console.warn('[GoSelf] member_rewards refetch failed:', e.message);
+        }
+      }
     } else {
       // Clear all goself cache keys and reload everything
       try {
@@ -785,7 +804,6 @@ export function useCustomerData() {
     merchant,
     customer,
     detectedEmail: customerEmail,
-    catalog,
     earnRules,
     redeemCatalog,
     wallet,

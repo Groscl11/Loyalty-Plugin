@@ -36,6 +36,27 @@ const SurveyOverlay = React.memo(function SurveyOverlay({
         try {
           const shopDomain = (typeof window !== 'undefined' && (window.Shopify?.shop || window.location?.hostname)) || '';
           const email = (typeof window !== 'undefined' && window.__goself_customer_email) || '';
+
+          // Step 1: Persist answers (fire and forget — never block point award)
+          try {
+            await fetch(`${SUPABASE_URL}/functions/v1/submit-survey-response`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+              },
+              body: JSON.stringify({
+                email,
+                shop_domain: shopDomain,
+                survey_id: survey?.id || null,
+                answers: newAnswers,
+              }),
+            });
+          } catch (e) {
+            console.warn('[survey] submit-survey-response failed, continuing:', e);
+          }
+
+          // Step 2: Award points
           await fetch(`${SUPABASE_URL}/functions/v1/submit-action-reward`, {
             method: 'POST',
             headers: {

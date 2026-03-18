@@ -55,31 +55,22 @@ const MemberRedeem = React.memo(function MemberRedeem({ data, config }) {
     setRedeemError(null);
     let code = null;
     try {
-      let res;
-      if (item.type === 'partner') {
-        res = await fetch(`${SUPABASE_URL}/functions/v1/redeem-brand-reward`, {
-          method: 'POST',
-          headers: SUPABASE_HEADERS,
-          body: JSON.stringify({
-            member_user_id: customer.customerId || customer.email,
-            shop_domain:    shopDomain,
-            config_id:      item.id,
-            reward_id:      item.rewardId,
-            points:         item.pointsCost,
-          }),
-        });
-      } else {
-        res = await fetch(`${SUPABASE_URL}/functions/v1/redeem-loyalty-points`, {
-          method: 'POST',
-          headers: SUPABASE_HEADERS,
-          body: JSON.stringify({
-            member_user_id: customer.customerId || customer.email,
-            shop_domain:    shopDomain,
-            reward_id:      item.id,
-            points:         item.pointsCost,
-          }),
-        });
+      // Both store and partner rewards go through redeem-loyalty-points.
+      // distribution_id is passed for partner rewards so the server can resolve
+      // the correct offer_distributions row (and authoritative points_cost).
+      const redeemBody = {
+        member_user_id: customer.customerId || customer.email,
+        shop_domain:    shopDomain,
+        reward_id:      item.type === 'partner' ? item.rewardId : item.id,
+      };
+      if (item.type === 'partner' && item.id) {
+        redeemBody.distribution_id = item.id; // item.id is config_id (offer_distributions.id)
       }
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/redeem-loyalty-points`, {
+        method: 'POST',
+        headers: SUPABASE_HEADERS,
+        body: JSON.stringify(redeemBody),
+      });
       const json = await res.json();
       if (json.success === false || json.error) {
         setRedeemError(json.error || 'Redemption failed. Please try again.');

@@ -26,8 +26,10 @@ const MemberHistory = React.memo(function MemberHistory({ data, config }) {
     setTimeout(() => setRefreshing(false), 2000);
   }, [data]);
 
-  const totalEarned   = history.filter(h => h.delta > 0).reduce((s, h) => s + h.delta, 0);
-  const totalRedeemed = history.filter(h => h.delta < 0).reduce((s, h) => s + Math.abs(h.delta), 0);
+  const totalEarned   = customer.lifetimeEarned
+                      || history.filter(h => h.delta > 0).reduce((s, h) => s + h.delta, 0);
+  const totalRedeemed = customer.lifetimeRedeemed
+                      || history.filter(h => h.delta < 0).reduce((s, h) => s + Math.abs(h.delta), 0);
 
   const filtered = history.filter(h => {
     if (filter === 'earned')   return h.delta > 0;

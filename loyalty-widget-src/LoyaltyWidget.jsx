@@ -133,14 +133,23 @@ export function LoyaltyWidget() {
     typeof window !== 'undefined' &&
     window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 
-  // ── Override config with backend program branding (e.g. "Gems" instead of "Points") ──
-  const effectiveConfig = data.customer?.programPointsName
-    ? {
-        ...config,
-        pointsNoun:   data.customer.programPointsName,
-        pointsAbbrev: data.customer.programPointsNameSingular || data.customer.programPointsName,
-      }
-    : config;
+  // ── Always use backend for points name, abbreviation, and tier names ──
+  const effectiveConfig = {
+    ...config,
+    pointsNoun:   data.customer?.programPointsName || 'Points',
+    pointsAbbrev: data.customer?.programPointsNameSingular || data.customer?.programPointsName || 'pts',
+    tierNames:    data.customer?.tierThresholds?.names || {
+      bronze: 'Bronze', silver: 'Silver', gold: 'Gold', platinum: 'Platinum'
+    },
+    // Feature flags: only enable if backend says so (add to customer or merchant data as needed)
+    showReferTab: !!data.merchant?.showReferTab,
+    showLeaderboard: !!data.merchant?.showLeaderboard,
+    showSurvey: !!data.merchant?.showSurvey,
+    showSurveyOnHome: !!data.merchant?.showSurveyOnHome,
+    showPartnerBrands: !!data.merchant?.showPartnerBrands,
+    enableFreeProducts: !!data.merchant?.enableFreeProducts,
+    showMilestones: !!data.merchant?.showMilestones,
+  };
 
   // ── Render active tab content ──────────────────────────────────────────────
 

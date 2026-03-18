@@ -33,15 +33,65 @@ const MemberWallet = React.memo(function MemberWallet({ data, config, setTab }) 
   const [copiedId, setCopiedId]   = useState(null);
   const [voucherItem, setVoucherItem] = useState(null);
 
-  const wallet  = data.wallet  || [];
-  const history = data.history || [];
+  const wallet    = data.wallet      || [];
+  const history   = data.history     || [];
+  const redeemCat = data.redeemCatalog || {};
+  const customer  = data.customer    || {};
 
-  const totalEarned   = history.filter(h => h.delta > 0).reduce((s, h) => s + h.delta, 0);
-  const totalRedeemed = history.filter(h => h.delta < 0).reduce((s, h) => s + Math.abs(h.delta), 0);
+  // Merge claimed codes from redeemCatalog into wallet so they always appear
+  // even when get-loyalty-status doesn't return them in issued_coupons
+  const claimedFromRedeem = [];
+  if (redeemCat.existingCodes) {
+    Object.entries(redeemCat.existingCodes).forEach(([rewardId, entry]) => {
+      if (entry?.code && !wallet.some(w => w.code === entry.code)) {
+        const reward = (redeemCat.discountRewards || []).find(r => r.id === rewardId)
+                    || (redeemCat.manualRewards   || []).find(r => r.id === rewardId);
+        if (reward) {
+          claimedFromRedeem.push({
+            id:           `claimed_${rewardId}`,
+            type:         reward.type || 'discount',
+            status:       'active',
+            code:         entry.code,
+            title:        reward.title,
+            discountValue: reward.discountValue || '',
+            expiresAt:    null,
+          });
+        }
+      }
+    });
+  }
+  if (redeemCat.existingBrandCodes) {
+    Object.entries(redeemCat.existingBrandCodes).forEach(([rewardId, entry]) => {
+      if (entry?.code && !wallet.some(w => w.code === entry.code)) {
+        const reward = (redeemCat.brandRewards || []).find(r => r.rewardId === rewardId);
+        if (reward) {
+          claimedFromRedeem.push({
+            id:           `claimed_brand_${rewardId}`,
+            type:         'partner',
+            status:       'active',
+            code:         entry.code,
+            title:        reward.title,
+            brandName:    reward.brandName || null,
+            brandUrl:     reward.brandUrl  || null,
+            discountValue: reward.discountValue || '',
+            expiresAt:    null,
+          });
+        }
+      }
+    });
+  }
+  const combinedWallet = [...wallet, ...claimedFromRedeem];
 
-  const filtered = wallet.filter(c => c.status === filter);
+  // Use authoritative lifetime totals from the session when available;
+  // fall back to computing from visible history (which may be truncated)
+  const totalEarned   = customer.lifetimeEarned
+                      || history.filter(h => h.delta > 0).reduce((s, h) => s + h.delta, 0);
+  const totalRedeemed = customer.lifetimeRedeemed
+                      || history.filter(h => h.delta < 0).reduce((s, h) => s + Math.abs(h.delta), 0);
+
+  const filtered = combinedWallet.filter(c => c.status === filter);
   const counts   = { active: 0, used: 0, expired: 0 };
-  wallet.forEach(c => { if (counts[c.status] !== undefined) counts[c.status]++; });
+  combinedWallet.forEach(c => { if (counts[c.status] !== undefined) counts[c.status]++; });
 
   const handleCopy = useCallback((code, id) => {
     copyText(code);

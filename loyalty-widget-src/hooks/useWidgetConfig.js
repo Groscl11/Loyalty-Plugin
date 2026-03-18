@@ -96,27 +96,19 @@ export function useWidgetConfig() {
     shakeOnLoad:      settings.shake_on_load        ?? true,
     shakeIntervalSec: settings.shake_interval_sec   || 10,
 
-    // Messaging
-    pointsNoun:   settings.points_noun  || 'Points',
-    pointsAbbrev: settings.points_abbrev || 'pts',
-    rewardNoun:   settings.reward_noun  || 'Reward',
-    tierNames: {
-      bronze:   settings.tier_bronze_name   || 'Bronze',
-      silver:   settings.tier_silver_name   || 'Silver',
-      gold:     settings.tier_gold_name     || 'Gold',
-      platinum: settings.tier_platinum_name || 'Platinum',
-    },
+    // Messaging (points name, tier names, etc. are always from backend)
     welcomeMsg:   settings.welcome_message || 'Hi {firstName} 👋',
     guestHeadline: settings.guest_headline || 'Earn rewards on every purchase',
     guestSubline:  settings.guest_subline  || 'Points · Partner offers · Milestone gifts',
 
-    // Feature flags
-    showReferTab:       settings.show_refer_tab       ?? true,
-    showLeaderboard:    settings.show_leaderboard     ?? true,
-    showSurvey:         settings.show_survey          ?? true,
-    showPartnerBrands:  settings.show_partner_brands  ?? true,
-    enableFreeProducts: settings.enable_free_products ?? true,
-    showMilestones:     settings.show_milestones      ?? true,
+    // Feature flags (only enable if backend says so)
+    showReferTab:       false, // always backend controlled
+    showLeaderboard:    false,
+    showSurvey:         false,
+    showSurveyOnHome:   false,
+    showPartnerBrands:  false,
+    enableFreeProducts: false,
+    showMilestones:     false,
 
     // Leaderboard prizes
     prizes: [
