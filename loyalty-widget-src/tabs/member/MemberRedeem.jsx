@@ -68,14 +68,19 @@ const MemberRedeem = React.memo(function MemberRedeem({ data, config }) {
       if (item.type === 'partner' && item.id) {
         redeemBody.distribution_id = item.id; // item.id is config_id (offer_distributions.id)
       }
+      console.log('[GoSelf] redeem request:', JSON.stringify(redeemBody));
       const res = await fetch(`${SUPABASE_URL}/functions/v1/redeem-loyalty-points`, {
         method: 'POST',
         headers: SUPABASE_HEADERS,
         body: JSON.stringify(redeemBody),
       });
       const json = await res.json();
+      console.log('[GoSelf] redeem response:', JSON.stringify(json));
       if (json.success === false || json.error) {
-        setRedeemError(json.error || 'Redemption failed. Please try again.');
+        const debugSuffix = json.current_points !== undefined
+          ? ` — backend sees balance:${json.current_points} cost:${json.required_points}`
+          : '';
+        setRedeemError((json.error || 'Redemption failed. Please try again.') + debugSuffix);
         setRedeeming(false);
         return;
       }
