@@ -224,7 +224,21 @@ async function fetchMerchantConfig(shopDomain, customerData) {
   // Use earn_rules and tier_thresholds from the loyalty-status response if present
   const raw = customerData?._raw || {};
   const earnRulesFromApi = raw.earn_rules || raw.earnRules || null;
-  const tierThresholdsFromApi = raw.tier_thresholds || customerData?.tierThresholds || null;
+  let tierThresholdsFromApi = raw.tier_thresholds || customerData?.tierThresholds || null;
+
+  // For guests (no customer session), fetch program/tier config from backend
+  if (!tierThresholdsFromApi && shopDomain) {
+    try {
+      const guestConfig = await apiFetch(
+        `${SUPABASE_URL}/functions/v1/get-loyalty-status?shop_domain=${encodeURIComponent(shopDomain)}`
+      );
+      if (guestConfig?.tier_thresholds) {
+        tierThresholdsFromApi = guestConfig.tier_thresholds;
+      }
+    } catch (e) {
+      console.warn('[GoSelf] guest tier config fetch failed:', e.message);
+    }
+  }
 
   const result = {
     storeName:      shopDomain.replace('.myshopify.com', ''),
@@ -459,6 +473,7 @@ async function fetchHistory(shopDomain, customerEmail, rawSession) {
         date:  t.created_at  || t.date  || '',
         icon:  t.icon  || (isRedeem ? '⬇' : '⬆'),
         type:  isRedeem ? 'redeem' : 'earn',
+        _meta: t.metadata || null,
       };
     });
     cacheSet(cacheKey, result);
@@ -773,8 +788,20 @@ export function useCustomerData() {
       // For critical customer_session domain, refetch immediately
       if (domain === 'customer_session' && customerEmail) {
         try {
+          // Also clear derived domain caches so they re-read from fresh session
+          try {
+            sessionStorage.removeItem('goself:history');
+            sessionStorage.removeItem('goself:wallet');
+          } catch { /* ignore */ }
           const customerData = await fetchCustomerSession(shopDomain, customerEmail);
           setCustomer(customerData);
+          const rawSess = customerData._raw || null;
+          const [histResult, walletResult] = await Promise.allSettled([
+            fetchHistory(shopDomain, customerEmail, rawSess),
+            fetchWallet(shopDomain, customerEmail, rawSess),
+          ]);
+          if (histResult.status   === 'fulfilled') setHistory(histResult.value);
+          if (walletResult.status === 'fulfilled') setWallet(walletResult.value);
           console.log('[GoSelf] Manual refetch complete, points:', customerData.pointsBalance);
         } catch (e) {
           console.warn('[GoSelf] Manual refetch failed:', e.message);

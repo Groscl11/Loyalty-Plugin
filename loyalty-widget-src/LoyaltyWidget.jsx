@@ -138,7 +138,7 @@ export function LoyaltyWidget() {
     ...config,
     pointsNoun:   data.customer?.programPointsName || 'Points',
     pointsAbbrev: data.customer?.programPointsNameSingular || data.customer?.programPointsName || 'pts',
-    tierNames:    data.customer?.tierThresholds?.names || {
+    tierNames:    data.customer?.tierThresholds?.names || data.merchant?.tierThresholds?.names || {
       bronze: 'Bronze', silver: 'Silver', gold: 'Gold', platinum: 'Platinum'
     },
     // Feature flags: only enable if backend says so (add to customer or merchant data as needed)
