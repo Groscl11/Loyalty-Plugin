@@ -331,7 +331,7 @@ async function fetchMemberRewards(shopDomain, customerEmail, customerId) {
 
     const result = {
       discountRewards: storeDiscounts.map(r => ({
-        id:            r.id,
+        id:            r.offer_id || r.distribution_id,
         type:          'discount',
         title:         r.title,
         description:   r.description || null,
@@ -345,8 +345,8 @@ async function fetchMemberRewards(shopDomain, customerEmail, customerId) {
       brandRewards: [
         // partner_voucher brand rewards from the backend
         ...(data.brand_rewards || []).map(r => ({
-          id:            r.config_id,
-          rewardId:      r.reward_id,
+          id:            r.distribution_id,
+          rewardId:      r.offer_id,
           type:          'partner',
           title:         r.title,
           description:   r.description || r.value_description || null,
@@ -363,8 +363,8 @@ async function fetchMemberRewards(shopDomain, customerEmail, customerId) {
         })),
         // marketplace_offer rewards also appear in the Partners tab
         ...marketplaceDiscounts.map(r => ({
-          id:            r.distribution_id || r.id,
-          rewardId:      r.id,
+          id:            r.distribution_id,
+          rewardId:      r.offer_id,
           type:          'partner',
           title:         r.title,
           description:   r.description || null,
