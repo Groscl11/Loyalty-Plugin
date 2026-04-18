@@ -55,7 +55,7 @@ const MemberRedeem = React.memo(function MemberRedeem({ data, config }) {
     setRedeemError(null);
     let code = null;
     try {
-      // Both store and partner rewards go through redeem-loyalty-points.
+      // Store and partner rewards go through redeem-reward endpoint.
       // distribution_id is passed for partner rewards so the server can resolve
       // the correct offer_distributions row (and authoritative points_cost).
       const redeemBody = {
@@ -63,13 +63,12 @@ const MemberRedeem = React.memo(function MemberRedeem({ data, config }) {
         email:          customer.email || null,
         shop_domain:    shopDomain,
         reward_id:      item.type === 'partner' ? item.rewardId : item.id,
-        points:         item.pointsCost,
       };
       if (item.type === 'partner' && item.id) {
-        redeemBody.distribution_id = item.id; // item.id is config_id (offer_distributions.id)
+        redeemBody.config_id = item.id; // item.id is config_id (offer_distributions.id)
       }
       console.log('[GoSelf] redeem request:', JSON.stringify(redeemBody));
-      const res = await fetch(`${SUPABASE_URL}/functions/v1/redeem-loyalty-points`, {
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/redeem-reward`, {
         method: 'POST',
         headers: SUPABASE_HEADERS,
         body: JSON.stringify(redeemBody),
