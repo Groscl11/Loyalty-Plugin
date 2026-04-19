@@ -10,8 +10,23 @@ import { SUPABASE_URL, SUPABASE_HEADERS } from '../../utils/supabase.js';
 
 const SUB_TABS = ['store', 'partners', 'free'];
 
+// Sort items so unclaimed come first; among claimed, latest (highest expires_at) first
+function sortWithClaimedLast(items, existingCodeMap) {
+  return [...items].sort((a, b) => {
+    const aCode = existingCodeMap[a.id] || existingCodeMap[a.rewardId];
+    const bCode = existingCodeMap[b.id] || existingCodeMap[b.rewardId];
+    if (!aCode && bCode) return -1;
+    if (aCode && !bCode) return 1;
+    if (aCode && bCode) {
+      const aTime = aCode.expires_at ? new Date(aCode.expires_at).getTime() : 0;
+      const bTime = bCode.expires_at ? new Date(bCode.expires_at).getTime() : 0;
+      return bTime - aTime; // latest claimed first among claimed
+    }
+    return 0;
+  });
+}
+
 const MemberRedeem = React.memo(function MemberRedeem({ data, config }) {
-  const [subTab, setSubTab]         = useState('store');
   const [voucherItem, setVoucherItem] = useState(null);
 
   const [redeeming, setRedeeming] = useState(false);
@@ -22,11 +37,30 @@ const MemberRedeem = React.memo(function MemberRedeem({ data, config }) {
   const shopDomain = (typeof window !== 'undefined' && (window.Shopify?.shop || window.location?.hostname)) || '';
 
   // Prefer backend-grouped catalog; fall back to legacy flat catalog
-  const storeItems   = redeemCat.discountRewards || (data.catalog || []).filter(r => r.type === 'discount');
-  const partnerItems = redeemCat.brandRewards    || (data.catalog || []).filter(r => r.type === 'partner');
-  const freeItems    = redeemCat.manualRewards   || (data.catalog || []).filter(r => r.type === 'free');
   const existingCodes      = redeemCat.existingCodes      || {};
   const existingBrandCodes = redeemCat.existingBrandCodes || {};
+
+  const storeItems   = sortWithClaimedLast(
+    redeemCat.discountRewards || (data.catalog || []).filter(r => r.type === 'discount'),
+    existingCodes
+  );
+  const partnerItems = sortWithClaimedLast(
+    redeemCat.brandRewards    || (data.catalog || []).filter(r => r.type === 'partner'),
+    { ...existingCodes, ...existingBrandCodes }
+  );
+  const freeItems    = sortWithClaimedLast(
+    redeemCat.manualRewards   || (data.catalog || []).filter(r => r.type === 'free'),
+    existingCodes
+  );
+
+  // Determine which tabs have content to show
+  const showStore    = storeItems.length > 0;
+  const showPartners = partnerItems.length > 0 && config.showPartnerBrands;
+  const showFree     = freeItems.length > 0 && config.enableFreeProducts;
+
+  // Auto-select first available tab (derived — no useState needed)
+  const firstAvailable = showStore ? 'store' : showPartners ? 'partners' : showFree ? 'free' : 'store';
+  const [subTab, setSubTab] = useState(firstAvailable);
 
   const handleRedeem = useCallback(async (item) => {
     // If already claimed, show existing code in modal
@@ -143,11 +177,12 @@ const MemberRedeem = React.memo(function MemberRedeem({ data, config }) {
         </div>
       )}
 
-      {/* Sub-tab bar */}
+      {/* Sub-tab bar — only show tabs that have items */}
       <div style={{ display: 'flex', borderBottom: '1px solid #f3f4f6', padding: '0 16px' }}>
         {SUB_TABS.map(t => {
-          if (t === 'partners' && !config.showPartnerBrands) return null;
-          if (t === 'free' && !config.enableFreeProducts) return null;
+          if (t === 'store'    && !showStore)    return null;
+          if (t === 'partners' && !showPartners) return null;
+          if (t === 'free'     && !showFree)     return null;
           const label = t === 'store' ? '🏪 Store' : t === 'partners' ? '🤝 Partners' : '🎁 Free';
           return (
             <button
@@ -172,6 +207,15 @@ const MemberRedeem = React.memo(function MemberRedeem({ data, config }) {
       </div>
 
       <div style={{ flex: 1, overflowY: 'auto', padding: '14px 16px 24px' }}>
+
+        {/* No rewards at all */}
+        {!showStore && !showPartners && !showFree && (
+          <div style={{ textAlign: 'center', color: '#9ca3af', fontSize: 13, paddingTop: 40 }}>
+            <div style={{ fontSize: 28, marginBottom: 10 }}>🎁</div>
+            <div style={{ fontWeight: 600, color: '#374151', marginBottom: 6 }}>No rewards available yet</div>
+            <div style={{ fontSize: 11, lineHeight: 1.5 }}>Keep earning points — rewards will appear here soon.</div>
+          </div>
+        )}
 
         {subTab === 'store' && storeItems.map(item => (
           <RedeemCard
@@ -256,6 +300,7 @@ function RedeemCard({ item, config, balance, ctaLabel, accentColor, onAction, ex
   const canAfford = balance >= item.pointsCost;
   const isClaimed = !!existingCode;
   const [copied, setCopied] = useState(false);
+  const [hovered, setHovered] = useState(false);
 
   const handleCopy = useCallback(() => {
     if (!existingCode?.code) return;
@@ -269,18 +314,55 @@ function RedeemCard({ item, config, balance, ctaLabel, accentColor, onAction, ex
     setTimeout(() => setCopied(false), 2000);
   }, [existingCode]);
 
+  const needMore = !isClaimed && !canAfford ? item.pointsCost - balance : 0;
+
   return (
-    <div style={{
-      display: 'flex',
-      alignItems: 'center',
-      gap: 12,
-      padding: '12px 14px',
-      border: '1px solid #f3f4f6',
-      borderRadius: 12,
-      background: isClaimed ? '#fafffe' : '#fff',
-      marginBottom: 10,
-      opacity: !isClaimed && !canAfford ? 0.65 : 1,
-    }}>
+    <div
+      style={{
+        position: 'relative',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 12,
+        padding: '12px 14px',
+        border: '1px solid #f3f4f6',
+        borderRadius: 12,
+        background: isClaimed ? '#fafffe' : '#fff',
+        marginBottom: 10,
+        opacity: !isClaimed && !canAfford ? 0.65 : 1,
+      }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
+      {needMore > 0 && hovered && (
+        <div style={{
+          position: 'absolute',
+          top: -34,
+          left: '50%',
+          transform: 'translateX(-50%)',
+          background: '#1f2937',
+          color: '#fff',
+          fontSize: 11,
+          fontWeight: 600,
+          padding: '5px 10px',
+          borderRadius: 6,
+          whiteSpace: 'nowrap',
+          pointerEvents: 'none',
+          zIndex: 10,
+          boxShadow: '0 2px 8px rgba(0,0,0,0.18)',
+        }}>
+          Need {Number(needMore).toLocaleString('en-IN')} more {config.pointsAbbrev}
+          <div style={{
+            position: 'absolute',
+            bottom: -5,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            width: 0, height: 0,
+            borderLeft: '5px solid transparent',
+            borderRight: '5px solid transparent',
+            borderTop: '5px solid #1f2937',
+          }} />
+        </div>
+      )}
       <div style={{
         width: 46, height: 46, borderRadius: 10,
         background: `${accentColor}18`,
@@ -304,7 +386,7 @@ function RedeemCard({ item, config, balance, ctaLabel, accentColor, onAction, ex
       </div>
 
       {isClaimed ? (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-end', flexShrink: 0 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-end', flexShrink: 0, marginLeft: 'auto' }}>
           <div style={{
             background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 8,
             padding: '4px 10px', fontSize: 11, fontWeight: 700, color: '#16a34a',
