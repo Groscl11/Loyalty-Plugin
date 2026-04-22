@@ -8,7 +8,10 @@
       "Bash(mv floating-widget:*)",
       "Bash(mv loyalty-widget:*)",
       "Bash(ls -1 --color=never *.*)",
-      "Bash(ls -1 --color=never -d */)"
+      "Bash(ls -1 --color=never -d */)",
+      "Bash(grep -l \"Allow-Origin.*'\\\\*'\" */index.ts)",
+      "Bash(grep -l \"Allow-Origin.*goself.netlify\" */index.ts)",
+      "Bash(grep -l 'Allow-Origin.*\"\\\\*\"' */index.ts)"
     ]
   }
 }

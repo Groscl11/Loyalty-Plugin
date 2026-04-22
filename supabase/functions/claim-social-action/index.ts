@@ -40,8 +40,6 @@ Deno.serve(async (req: Request) => {
 
     const normalizedEmail = email.trim().toLowerCase();
 
-    console.log('[claim-social-action] Starting claim for user:', normalizedEmail, 'rule_id:', rule_id);
-
     // ── Resolve client_id ────────────────────────────────────────────────────
     let clientId: string | null = null;
 
@@ -90,8 +88,6 @@ Deno.serve(async (req: Request) => {
 
     const memberUserId = member.id;
 
-    console.log('[claim-social-action] Found member:', memberUserId);
-
     // ── Lookup earning rule ──────────────────────────────────────────────────
     const { data: rule } = await supabase
       .from('loyalty_earning_rules')
@@ -108,8 +104,6 @@ Deno.serve(async (req: Request) => {
       return json({ error: 'Rule is not a social action rule' }, 400);
     }
 
-    console.log('[claim-social-action] Found rule:', rule.id, 'platform:', rule.social_platform, 'points:', rule.points_reward);
-
     // ── Check if already claimed (prevent double-claiming) ────────────────────
     const { data: existingTxn } = await supabase
       .from('loyalty_points_transactions')
@@ -121,7 +115,6 @@ Deno.serve(async (req: Request) => {
       .maybeSingle();
 
     if (existingTxn) {
-      console.log('[claim-social-action] Already claimed by member:', memberUserId, 'rule:', rule.id);
       return json({ error: 'Action already claimed', already_claimed: true }, 400);
     }
 
@@ -133,8 +126,6 @@ Deno.serve(async (req: Request) => {
       .maybeSingle();
 
     if (!loyaltyStatus) {
-      console.log('[claim-social-action] Member not enrolled, auto-enrolling...');
-      
       // Get default tier
       const { data: defaultTier } = await supabase
         .from('loyalty_tiers')
@@ -209,8 +200,6 @@ Deno.serve(async (req: Request) => {
       console.error('[claim-social-action] Failed to create transaction:', txnErr.message);
       return json({ error: 'Failed to create transaction' }, 500);
     }
-
-    console.log('[claim-social-action] SUCCESS: Awarded', SOCIAL_BONUS, 'points to member:', memberUserId);
 
     return json({
       success: true,

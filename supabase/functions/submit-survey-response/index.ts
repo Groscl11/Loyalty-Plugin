@@ -42,11 +42,6 @@ Deno.serve(async (req: Request) => {
 
     const normalizedEmail = email.trim().toLowerCase();
 
-    // DIAGNOSTIC: Log for specific user
-    if (normalizedEmail === 'groscl.ltd+8809@gmail.com') {
-      console.log('[DIAG] submit-survey-response: Starting for user', normalizedEmail, 'shop_domain:', shop_domain, 'survey_id:', survey_id);
-    }
-
     // ── Resolve client_id ────────────────────────────────────────────────────
     let clientId: string | null = null;
 
@@ -95,11 +90,6 @@ Deno.serve(async (req: Request) => {
 
     const memberUserId = member.id;
 
-    // DIAGNOSTIC: Log member found
-    if (normalizedEmail === 'groscl.ltd+8809@gmail.com') {
-      console.log('[DIAG] submit-survey-response: Found member id:', memberUserId);
-    }
-
     // ── Get active loyalty program ───────────────────────────────────────────
     const { data: loyaltyProgram } = await supabase
       .from('loyalty_programs')
@@ -143,11 +133,6 @@ Deno.serve(async (req: Request) => {
         .catch(() => {});
     }
 
-    // DIAGNOSTIC: Log survey persisted
-    if (normalizedEmail === 'groscl.ltd+8809@gmail.com') {
-      console.log('[DIAG] submit-survey-response: Survey response persisted, error?', !!surveyInsertErr);
-    }
-
     // ── Award survey-completion bonus points (if program exists) ────────────
     if (loyaltyProgram?.id) {
       // Lookup active survey earning rule for this client
@@ -188,11 +173,6 @@ Deno.serve(async (req: Request) => {
             metadata: surveyRule ? { rule_id: surveyRule.id } : {},
           });
       }
-    }
-
-    // DIAGNOSTIC: Log points awarded
-    if (normalizedEmail === 'groscl.ltd+8809@gmail.com') {
-      console.log('[DIAG] submit-survey-response: Points awarded?', !!loyaltyStatus, 'amount:', SURVEY_BONUS);
     }
 
     return json({ success: true, member_user_id: memberUserId });

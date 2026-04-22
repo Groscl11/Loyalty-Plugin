@@ -48,15 +48,6 @@ Deno.serve(async (req: Request) => {
 
     const normalizedEmail = email.trim().toLowerCase();
 
-    console.log(
-      '[submit-action-reward] Starting for user:',
-      normalizedEmail,
-      'rule_type:',
-      rule_type,
-      'rule_id:',
-      rule_id
-    );
-
     // ── Resolve client_id ────────────────────────────────────────────────────
     let clientId: string | null = null;
 
@@ -80,8 +71,6 @@ Deno.serve(async (req: Request) => {
     if (!clientId) {
       return json({ error: 'Shop not found or not integrated', shop_domain }, 404);
     }
-
-    console.log('[submit-action-reward] Resolved client_id:', clientId);
 
     // ── Resolve member ───────────────────────────────────────────────────────
     let { data: member } = await supabase
@@ -107,8 +96,6 @@ Deno.serve(async (req: Request) => {
 
     const memberUserId = member.id;
 
-    console.log('[submit-action-reward] Found member:', memberUserId);
-
     // ── Lookup earning rule ──────────────────────────────────────────────────
     const { data: rule } = await supabase
       .from('loyalty_earning_rules')
@@ -120,15 +107,6 @@ Deno.serve(async (req: Request) => {
     if (!rule) {
       return json({ error: 'Earning rule not found or inactive' }, 404);
     }
-
-    console.log(
-      '[submit-action-reward] Found rule:',
-      rule.id,
-      'type:',
-      rule.rule_type,
-      'points:',
-      rule.points_reward
-    );
 
     // ── Persist action completion (surveys only) ─────────────────────────────
     if (rule.rule_type === 'survey') {
@@ -167,7 +145,6 @@ Deno.serve(async (req: Request) => {
           .catch(() => {});
       }
 
-      console.log('[submit-action-reward] Survey response persisted');
     }
 
     // ── Check if already claimed (prevent double-claiming) ───────────────────
@@ -181,12 +158,6 @@ Deno.serve(async (req: Request) => {
       .maybeSingle();
 
     if (existingTxn) {
-      console.log(
-        '[submit-action-reward] Already claimed:',
-        memberUserId,
-        'rule:',
-        rule.id
-      );
       return json({ error: 'Action already claimed', already_claimed: true }, 400);
     }
 
@@ -198,8 +169,6 @@ Deno.serve(async (req: Request) => {
       .maybeSingle();
 
     if (!loyaltyStatus) {
-      console.log('[submit-action-reward] Member not enrolled, auto-enrolling...');
-
       // Get default tier
       const { data: defaultTier } = await supabase
         .from('loyalty_tiers')
@@ -288,15 +257,6 @@ Deno.serve(async (req: Request) => {
       console.error('[submit-action-reward] Failed to create transaction:', txnErr.message);
       return json({ error: 'Failed to create transaction' }, 500);
     }
-
-    console.log(
-      '[submit-action-reward] ✅ SUCCESS: Awarded',
-      REWARD_POINTS,
-      'points to member:',
-      memberUserId,
-      'rule_type:',
-      rule.rule_type
-    );
 
     return json({
       success: true,

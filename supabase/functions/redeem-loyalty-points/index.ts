@@ -209,14 +209,6 @@ Deno.serve(async (req: Request) => {
       // Don't fail the whole operation if we can't create the record
     }
 
-    console.log('[redeem-loyalty-points] Redeemed:', {
-      member_user_id: memberId,
-      reward_id,
-      points_redeemed: pointsValue,
-      new_balance: newBalance,
-      discount_code: discountCode,
-    });
-
     return json({
       success: true,
       discount_code: discountCode,

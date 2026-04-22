@@ -13,23 +13,52 @@ function json(body: unknown, status = 200) {
   });
 }
 
+async function verifyShopifyHmac(rawBody: string, hmacHeader: string, secret: string): Promise<boolean> {
+  const encoder = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    'raw',
+    encoder.encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign']
+  );
+  const signature = await crypto.subtle.sign('HMAC', key, encoder.encode(rawBody));
+  const computed = btoa(String.fromCharCode(...new Uint8Array(signature)));
+  return computed === hmacHeader;
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response(null, { status: 200, headers: corsHeaders });
   if (req.method !== 'POST') return json({ error: 'POST required' }, 405);
 
   try {
+    // ── HMAC verification — must read raw body before parsing ────────────────
+    const rawBody = await req.text();
+    const hmacHeader = req.headers.get('X-Shopify-Hmac-Sha256') || '';
+    const webhookSecret = Deno.env.get('SHOPIFY_WEBHOOK_SECRET');
+
+    if (!webhookSecret) {
+      console.error('[shopify-order-webhook] SHOPIFY_WEBHOOK_SECRET not configured');
+      return json({ error: 'Webhook secret not configured' }, 500);
+    }
+
+    const isValid = await verifyShopifyHmac(rawBody, hmacHeader, webhookSecret);
+    if (!isValid) {
+      return json({ error: 'Invalid webhook signature' }, 401);
+    }
+
+    // ── Parse body after verification ────────────────────────────────────────
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL')!,
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     );
 
-    const body = await req.json();
+    const order = JSON.parse(rawBody);
     const topic = req.headers.get('X-Shopify-Topic') || '';
     const shopDomain = req.headers.get('X-Shopify-Shop-Domain') || '';
-    const order = body; // The body is the order object
 
-    if (!topic || !shopDomain || !order) {
-      return json({ error: 'Missing topic, shop domain, or order' }, 400);
+    if (!topic || !shopDomain) {
+      return json({ error: 'Missing topic or shop domain' }, 400);
     }
 
     // Handle orders/create (check paid) or orders/paid
@@ -40,16 +69,10 @@ Deno.serve(async (req: Request) => {
 
     const customerEmail = order.customer?.email;
     if (!customerEmail) {
-      console.log('[shopify-order-webhook] No customer email in order, order id:', order.id);
       return json({ message: 'No customer email' });
     }
 
     const normalizedEmail = customerEmail.trim().toLowerCase();
-
-    // DIAGNOSTIC: Log for specific user
-    if (normalizedEmail === 'groscl.ltd+8809@gmail.com') {
-      console.log('[DIAG] shopify-order-webhook: Order create paid for user', normalizedEmail, 'order id:', order.id, 'total:', order.total_price, 'financial_status:', order.financial_status);
-    }
 
     // ── Resolve client_id ────────────────────────────────────────────────────
     let clientId: string | null = null;
@@ -72,7 +95,6 @@ Deno.serve(async (req: Request) => {
     }
 
     if (!clientId) {
-      console.log('[shopify-order-webhook] Shop not found:', shopDomain);
       return json({ error: 'Shop not found or not integrated' }, 404);
     }
 
@@ -112,17 +134,11 @@ Deno.serve(async (req: Request) => {
         .single();
 
       if (createErr || !newMember) {
-        console.error('[shopify-order-webhook] AUTO-ENROLL FAILED: Error creating member:', createErr?.message || 'Unknown error', 'email:', normalizedEmail, 'client_id:', clientId);
+        console.error('[shopify-order-webhook] Failed to auto-enroll member:', createErr?.message);
         return json({ error: 'Failed to create member for auto-enrollment' }, 500);
       }
 
       member = newMember;
-      console.log('[shopify-order-webhook] AUTO-ENROLLED: Created new member for email:', normalizedEmail, 'member_id:', member.id);
-    }
-
-    // DIAGNOSTIC: Log member found
-    if (normalizedEmail === 'groscl.ltd+8809@gmail.com') {
-      console.log('[DIAG] shopify-order-webhook: Found member id:', member.id);
     }
 
     // ── Get or create loyalty status ─────────────────────────────────────────
@@ -132,9 +148,7 @@ Deno.serve(async (req: Request) => {
       .eq('member_user_id', member.id)
       .maybeSingle();
 
-    // ── AUTO-ENROLL: Create loyalty status if not found ──────────────────────
     if (!status) {
-      // Get loyalty program for this client (REQUIRED - cannot be null)
       const { data: program, error: progError } = await supabase
         .from('loyalty_programs')
         .select('id')
@@ -142,31 +156,24 @@ Deno.serve(async (req: Request) => {
         .eq('is_active', true)
         .maybeSingle();
 
-      if (progError) {
-        console.error('[shopify-order-webhook] Error fetching program:', progError.message, 'client_id:', clientId);
-        return json({ error: 'Failed to find loyalty program for client: ' + progError.message }, 500);
-      }
-
-      if (!program?.id) {
-        console.error('[shopify-order-webhook] No active loyalty program found for client_id:', clientId);
+      if (progError || !program?.id) {
+        console.error('[shopify-order-webhook] No active loyalty program for shop:', shopDomain);
         return json({ error: 'No active loyalty program configured for this shop' }, 500);
       }
 
       const programId = program.id;
       let tierId: string | null = null;
 
-      // Get default tier for this program
       const { data: defaultTier } = await supabase
         .from('loyalty_tiers')
         .select('id')
         .eq('loyalty_program_id', programId)
         .eq('is_default', true)
         .maybeSingle();
-      
+
       if (defaultTier?.id) {
         tierId = defaultTier.id;
       } else {
-        // If no default tier, get first available tier for this program
         const { data: firstTier } = await supabase
           .from('loyalty_tiers')
           .select('id')
@@ -196,20 +203,14 @@ Deno.serve(async (req: Request) => {
         .single();
 
       if (enrollErr || !newStatus) {
-        console.error('[shopify-order-webhook] AUTO-ENROLL FAILED: Error creating loyalty status:', enrollErr?.message || 'Unknown error', 'member_id:', member.id, 'tier_id:', tierId, 'program_id:', programId);
-        return json({ error: 'Failed to enroll in loyalty program: ' + (enrollErr?.message || 'Unknown error') }, 500);
+        console.error('[shopify-order-webhook] Failed to create loyalty status:', enrollErr?.message);
+        return json({ error: 'Failed to enroll in loyalty program' }, 500);
       }
 
       status = newStatus;
-      console.log('[shopify-order-webhook] AUTO-ENROLLED: Created loyalty status for member:', member.id, 'tier_id:', tierId, 'program_id:', programId);
     }
 
-    // DIAGNOSTIC: Log status
-    if (normalizedEmail === 'groscl.ltd+8809@gmail.com') {
-      console.log('[DIAG] shopify-order-webhook: Loyalty status found, current balance:', status.points_balance, 'tier id:', status.current_tier_id);
-    }
-
-    // ── Get tier for earn rates ──────────────────────────────────────────────
+    // ── Get tier earn rates ──────────────────────────────────────────────────
     let earnRate = 1;
     let earnDivisor = 1;
 
@@ -225,21 +226,15 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    // ── Calculate points ─────────────────────────────────────────────────────
+    // ── Calculate and award points ───────────────────────────────────────────
     const orderTotal = parseFloat(order.total_price || 0);
     const pointsEarned = Math.floor((orderTotal / earnDivisor) * earnRate);
 
-    // DIAGNOSTIC: Log points calc
-    if (normalizedEmail === 'groscl.ltd+8809@gmail.com') {
-      console.log('[DIAG] shopify-order-webhook: Calculated points:', pointsEarned, 'total:', orderTotal, 'rate:', earnRate, 'divisor:', earnDivisor);
-    }
-
     if (pointsEarned <= 0) {
-      console.log('[shopify-order-webhook] No points to award:', pointsEarned, 'for order:', order.id);
       return json({ message: 'No points to award' });
     }
 
-    // ── Check for duplicate ──────────────────────────────────────────────────
+    // ── Duplicate check ──────────────────────────────────────────────────────
     const { data: existingTxn } = await supabase
       .from('loyalty_points_transactions')
       .select('id')
@@ -249,16 +244,9 @@ Deno.serve(async (req: Request) => {
       .maybeSingle();
 
     if (existingTxn) {
-      console.log('[shopify-order-webhook] Points already awarded for order:', order.id);
       return json({ message: 'Already awarded' });
     }
 
-    // DIAGNOSTIC: Log awarding
-    if (normalizedEmail === 'groscl.ltd+8809@gmail.com') {
-      console.log('[DIAG] shopify-order-webhook: Awarding points:', pointsEarned, 'new balance:', newBalance);
-    }
-
-    // ── Award points ─────────────────────────────────────────────────────────
     const newBalance = (status.points_balance || 0) + pointsEarned;
     const newLifetime = (status.lifetime_points_earned || 0) + pointsEarned;
 
@@ -283,22 +271,16 @@ Deno.serve(async (req: Request) => {
         description: `Points earned on order #${order.name || order.id}`,
       });
 
-    // ── Link order to member in shopify_orders table ──────────────────────────
     await supabase
       .from('shopify_orders')
       .update({ member_id: member.id })
       .eq('order_id', order.id.toString())
       .maybeSingle();
 
-    // DIAGNOSTIC: Log points awarded
-    if (normalizedEmail === 'groscl.ltd+8809@gmail.com') {
-      console.log('[DIAG] shopify-order-webhook: Awarded points:', pointsEarned, 'for order:', order.id, 'new balance:', newBalance);
-    }
-
     return json({ success: true, points_awarded: pointsEarned, order_id: order.id });
 
   } catch (err) {
-    console.error('[shopify-order-webhook] Error:', err);
-    return json({ error: (err as Error).message }, 500);
+    console.error('[shopify-order-webhook] Unhandled error:', (err as Error).message);
+    return json({ error: 'Internal server error' }, 500);
   }
 });

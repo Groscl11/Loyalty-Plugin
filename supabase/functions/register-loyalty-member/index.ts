@@ -304,7 +304,6 @@ async function linkOrAwardReferral(
             });
 
             pointsAwarded = signupPoints;
-            console.log(`Referral signup: awarded ${signupPoints}pts to referrer ${referrerMemberUserId}`);
           }
         }
       }
