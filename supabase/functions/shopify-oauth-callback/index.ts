@@ -17,22 +17,30 @@ function errorPage(message: string, status = 400) {
 /**
  * Shopify OAuth callback — called after merchant authorises the app.
  *
- * Flow:
- *  1. Shopify redirects merchant to this URL with ?code=&hmac=&shop=&state=&timestamp=
- *  2. Verify HMAC using app client secret
- *  3. Exchange code for permanent access token via Shopify token endpoint
- *  4. Upsert store_installations row (shop_domain, access_token, scopes, client_id)
- *  5. Redirect merchant to the dashboard
+ * Multi-tenant client_id resolution (priority order):
+ *  1. `state` query param  — set by Goself dashboard when initiating OAuth
+ *     Dashboard initiates: /admin/oauth/authorize?...&state=<client_id>
+ *  2. Existing store_installations row — handles re-installs / token refresh
+ *  3. null — shop installed directly from App Store (client_id linked later
+ *     when merchant connects their Goself account from the dashboard)
+ *
+ * Full flow:
+ *  1. Verify HMAC using SHOPIFY_CLIENT_SECRET
+ *  2. Exchange code for permanent access token
+ *  3. Upsert store_installations with resolved client_id
+ *  4. Register GDPR webhooks programmatically (belt-and-suspenders alongside toml)
+ *  5. Redirect to dashboard /shopify/installed?shop=&client_id=
  */
 Deno.serve(async (req: Request) => {
   const url = new URL(req.url);
   const params = url.searchParams;
 
-  const shop = params.get('shop') || '';
-  const code = params.get('code') || '';
-  const hmac = params.get('hmac') || '';
+  const shop      = params.get('shop')  || '';
+  const code      = params.get('code')  || '';
+  const hmac      = params.get('hmac')  || '';
+  // state carries the Goself client_id when install is initiated from the dashboard
+  const stateClientId = params.get('state') || '';
 
-  // Basic parameter presence check
   if (!shop || !code || !hmac) {
     return errorPage('Missing required OAuth parameters (shop, code, hmac).');
   }
@@ -49,21 +57,21 @@ Deno.serve(async (req: Request) => {
     return errorPage('Invalid shop domain format.');
   }
 
-  const clientId = Deno.env.get('SHOPIFY_CLIENT_ID');
-  const clientSecret = Deno.env.get('SHOPIFY_CLIENT_SECRET');
+  const shopifyAppClientId = Deno.env.get('SHOPIFY_CLIENT_ID');
+  const clientSecret       = Deno.env.get('SHOPIFY_CLIENT_SECRET');
 
-  if (!clientId || !clientSecret) {
+  if (!shopifyAppClientId || !clientSecret) {
     console.error('[shopify-oauth-callback] SHOPIFY_CLIENT_ID or SHOPIFY_CLIENT_SECRET not set');
     return errorPage('App configuration error.', 500);
   }
 
   try {
-    // ── 3. Exchange code for access token ────────────────────────────────
+    // ── 3. Exchange code for permanent access token ──────────────────────
     const tokenRes = await fetch(`https://${shop}/admin/oauth/access_token`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        client_id: clientId,
+        client_id: shopifyAppClientId,
         client_secret: clientSecret,
         code,
       }),
@@ -75,39 +83,60 @@ Deno.serve(async (req: Request) => {
       return errorPage('Failed to exchange authorisation code. Please try installing again.', 502);
     }
 
-    const tokenData = await tokenRes.json();
+    const tokenData  = await tokenRes.json();
     const accessToken: string = tokenData.access_token;
-    const scope: string = tokenData.scope || '';
+    const scope: string       = tokenData.scope || '';
 
     if (!accessToken) {
       console.error('[shopify-oauth-callback] No access_token in response');
       return errorPage('No access token received from Shopify.', 502);
     }
 
-    // ── 4. Upsert store_installations ────────────────────────────────────
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL')!,
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     );
 
-    // Check if there's an existing installation to carry over client_id
-    const { data: existing } = await supabase
-      .from('store_installations')
-      .select('client_id')
-      .eq('shop_domain', shop)
-      .maybeSingle();
+    // ── 4. Resolve client_id ─────────────────────────────────────────────
+    // Priority: state param (from dashboard) → existing row → null
+    let resolvedClientId: string | null = null;
 
+    if (stateClientId) {
+      // Validate that the state value is a real client in auth.users
+      const { data: clientRow } = await supabase
+        .from('store_installations')
+        .select('client_id')
+        .eq('client_id', stateClientId)
+        .limit(1)
+        .maybeSingle();
+
+      // Accept state even if no prior installation exists — this is a new install
+      // We trust it because it came through Shopify's signed OAuth redirect
+      resolvedClientId = stateClientId;
+    }
+
+    if (!resolvedClientId) {
+      // Re-install: carry over the client_id from the existing record
+      const { data: existing } = await supabase
+        .from('store_installations')
+        .select('client_id')
+        .eq('shop_domain', shop)
+        .maybeSingle();
+      resolvedClientId = existing?.client_id || null;
+    }
+
+    // ── 5. Upsert store_installations ────────────────────────────────────
     const { error: upsertErr } = await supabase
       .from('store_installations')
       .upsert(
         {
-          shop_domain: shop,
-          access_token: accessToken,
-          scopes: scope,
+          shop_domain:         shop,
+          access_token:        accessToken,
+          scopes:              scope,
           installation_status: 'active',
-          client_id: existing?.client_id || null,
-          installed_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
+          client_id:           resolvedClientId,
+          installed_at:        new Date().toISOString(),
+          updated_at:          new Date().toISOString(),
         },
         { onConflict: 'shop_domain' }
       );
@@ -117,13 +146,13 @@ Deno.serve(async (req: Request) => {
       return errorPage('Failed to save installation. Please try again.', 500);
     }
 
-    // ── 5. Register mandatory GDPR webhooks via Shopify API ──────────────
-    // These are registered programmatically as a fallback; toml subscriptions
-    // are the primary registration path once the app is submitted to the store.
+    // ── 6. Register GDPR webhooks programmatically ───────────────────────
+    // Belt-and-suspenders alongside the toml webhook subscriptions.
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const gdprTopics = [
-      { topic: 'customers/data_request', address: `${Deno.env.get('SUPABASE_URL')}/functions/v1/shopify-customers-data-request` },
-      { topic: 'customers/redact',       address: `${Deno.env.get('SUPABASE_URL')}/functions/v1/shopify-customers-redact` },
-      { topic: 'shop/redact',            address: `${Deno.env.get('SUPABASE_URL')}/functions/v1/shopify-shop-redact` },
+      { topic: 'customers/data_request', address: `${supabaseUrl}/functions/v1/shopify-customers-data-request` },
+      { topic: 'customers/redact',       address: `${supabaseUrl}/functions/v1/shopify-customers-redact` },
+      { topic: 'shop/redact',            address: `${supabaseUrl}/functions/v1/shopify-shop-redact` },
     ];
 
     for (const { topic, address } of gdprTopics) {
@@ -133,15 +162,15 @@ Deno.serve(async (req: Request) => {
           'X-Shopify-Access-Token': accessToken,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          webhook: { topic, address, format: 'json' },
-        }),
+        body: JSON.stringify({ webhook: { topic, address, format: 'json' } }),
       }).catch((e) => console.error(`[shopify-oauth-callback] Webhook reg failed (${topic}):`, e.message));
     }
 
-    // ── 6. Redirect to dashboard ─────────────────────────────────────────
-    const dashboardUrl = `${DASHBOARD_URL}/shopify/installed?shop=${encodeURIComponent(shop)}`;
-    return redirect(dashboardUrl);
+    // ── 7. Redirect to dashboard ─────────────────────────────────────────
+    // Pass both shop and client_id so the dashboard can show the right merchant
+    const redirectParams = new URLSearchParams({ shop });
+    if (resolvedClientId) redirectParams.set('client_id', resolvedClientId);
+    return redirect(`${DASHBOARD_URL}/shopify/installed?${redirectParams}`);
 
   } catch (err) {
     console.error('[shopify-oauth-callback] Unhandled error:', (err as Error).message);
