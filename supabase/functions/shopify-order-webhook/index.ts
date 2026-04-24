@@ -1,4 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
+import { verifyWebhookHmac } from '../_shared/shopify-hmac.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -11,20 +12,6 @@ function json(body: unknown, status = 200) {
     status,
     headers: { ...corsHeaders, 'Content-Type': 'application/json' },
   });
-}
-
-async function verifyShopifyHmac(rawBody: string, hmacHeader: string, secret: string): Promise<boolean> {
-  const encoder = new TextEncoder();
-  const key = await crypto.subtle.importKey(
-    'raw',
-    encoder.encode(secret),
-    { name: 'HMAC', hash: 'SHA-256' },
-    false,
-    ['sign']
-  );
-  const signature = await crypto.subtle.sign('HMAC', key, encoder.encode(rawBody));
-  const computed = btoa(String.fromCharCode(...new Uint8Array(signature)));
-  return computed === hmacHeader;
 }
 
 Deno.serve(async (req: Request) => {
