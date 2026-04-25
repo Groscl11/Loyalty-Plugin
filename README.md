@@ -3,7 +3,7 @@
 **Shopify 2024-2025 Compliant**
 All deprecated installation methods have been removed.
 
-## Overview
+## Overview 77
 
 This directory contains 6 Shopify-native extensions that power the Rewards Widget system:
 
