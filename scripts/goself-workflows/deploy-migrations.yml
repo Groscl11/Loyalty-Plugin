@@ -1,0 +1,29 @@
+name: Deploy DB Migrations
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/migrations/**'
+
+jobs:
+  migrate:
+    name: Apply database migrations
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Run migrations
+        run: |
+          supabase db push \
+            --project-ref lizgppzyyljqbmzdytia \
+            --db-password "${{ secrets.SUPABASE_DB_PASSWORD }}"
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+
+      - name: Confirm migration
+        run: echo "Database migrations applied to production"

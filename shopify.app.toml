@@ -2,20 +2,37 @@
 
 client_id = "3290e6e4e5cb6711e4a7876ef40f87e8"
 name = " Loyalty by Goself"
-application_url = "https://goself.netlify.app"
+application_url = "https://ai.goself.in"
 embedded = false
 
 [webhooks]
 api_version = "2026-01"
 
 [[webhooks.subscriptions]]
-topics = ["orders/create", "orders/paid"]
-uri = "https://lizgppzyyljqbmzdytia.supabase.co/functions/v1/shopify-order-webhook"
+  topics = ["orders/create", "orders/paid"]
+  uri = "https://lizgppzyyljqbmzdytia.supabase.co/functions/v1/shopify-order-webhook"
+
+  # GDPR mandatory webhooks (required for Shopify App Store submission)
+  [[webhooks.subscriptions]]
+  topics = ["customers/data_request"]
+  uri = "https://lizgppzyyljqbmzdytia.supabase.co/functions/v1/shopify-customers-data-request"
+
+  [[webhooks.subscriptions]]
+  topics = ["customers/redact"]
+  uri = "https://lizgppzyyljqbmzdytia.supabase.co/functions/v1/shopify-customers-redact"
+
+  [[webhooks.subscriptions]]
+  topics = ["shop/redact"]
+  uri = "https://lizgppzyyljqbmzdytia.supabase.co/functions/v1/shopify-shop-redact"
 
 [access_scopes]
-# Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
-scopes = "write_checkouts,read_checkouts,read_customers,write_customers,read_price_rules,write_price_rules,read_discounts,write_discounts,read_orders,write_orders,read_products,write_products,read_script_tags,write_script_tags,read_themes,write_themes"
-optional_scopes = [ ]
+# Minimal scopes required for loyalty program functionality:
+#   read_customers  — look up customer records to match loyalty members
+#   read_orders     — receive order webhooks and read order history
+#   read_discounts  — check existing discount codes before issuing rewards
+#   write_discounts — create discount codes for point redemptions
+scopes = "read_customers,read_orders,read_discounts,write_discounts"
+optional_scopes = []
 use_legacy_install_flow = false
 
 [auth]

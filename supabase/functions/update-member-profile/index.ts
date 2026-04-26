@@ -87,8 +87,6 @@ Deno.serve(async (req: Request) => {
       return json({ error: "Failed to update member profile" }, 500);
     }
 
-    console.log(`Profile updated for member ${member_user_id}:`, JSON.stringify(updates));
-
     return json({
       success: true,
       member_user_id,

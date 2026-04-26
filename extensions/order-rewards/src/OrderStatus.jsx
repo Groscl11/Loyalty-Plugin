@@ -67,27 +67,6 @@ function OrderStatusWidget() {
 
   return (
     <BlockStack spacing='base'>
-      {rewardData && (
-        <BlockStack spacing='tight'>
-          <Divider />
-          <InlineStack blockAlignment='center' spacing='base'>
-            <Text size='large'>🎁</Text>
-            <BlockStack spacing='extraTight' inlineSize='fill'>
-              <Text emphasis='bold'>
-                {rewardData.customer_first_name ? 'Dear, ' + rewardData.customer_first_name + '.' : 'Dear Customer,'}
-              </Text>
-              <Text appearance='subdued' size='small'>
-                {rewardData.campaign_name
-                  ? 'You have rewards waiting from “' + rewardData.campaign_name + '”!'
-                  : 'You have exclusive rewards waiting for you!'}
-              </Text>
-            </BlockStack>
-            <Link to={rewardData.claim_url} external>
-              <Button kind='primary'>Claim Your Rewards</Button>
-            </Link>
-          </InlineStack>
-        </BlockStack>
-      )}
       {!loading && loyaltyData && (
         <BlockStack spacing='tight'>
           <Divider />

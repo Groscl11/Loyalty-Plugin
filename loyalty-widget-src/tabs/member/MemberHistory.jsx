@@ -17,7 +17,11 @@ const MemberHistory = React.memo(function MemberHistory({ data, config }) {
 
   // Force-fresh on every mount so transactions from recent orders appear immediately
   useEffect(() => {
-    try { sessionStorage.removeItem('goself:customer_session'); } catch (_) {}
+    try {
+      sessionStorage.removeItem('goself:customer_session');
+      sessionStorage.removeItem('goself:customer_session_v2');
+      sessionStorage.removeItem('goself:history');
+    } catch (_) {}
   }, []);
 
   const handleRefresh = useCallback(() => {

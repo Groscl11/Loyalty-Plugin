@@ -82,6 +82,26 @@ const MemberWallet = React.memo(function MemberWallet({ data, config, setTab }) 
       }
     });
   }
+
+  // Fallback: read codes directly from redemption transaction history.
+  // Covers cases where the old function didn't persist codes to offer_codes,
+  // or where existingBrandCodes/existingCodes missed something.
+  history.filter(h => h.delta < 0 && h._meta?.code).forEach(h => {
+    const codeValue = h._meta.code;
+    const alreadyIn = wallet.some(w => w.code === codeValue)
+                   || claimedFromRedeem.some(c => c.code === codeValue);
+    if (!alreadyIn) {
+      claimedFromRedeem.push({
+        id:     `txn_${h.id}`,
+        type:   'partner',
+        status: 'active',
+        code:   codeValue,
+        title:  h.label || 'Reward',
+        expiresAt: null,
+      });
+    }
+  });
+
   const combinedWallet = [...wallet, ...claimedFromRedeem];
 
   // Use authoritative lifetime totals from the session when available;

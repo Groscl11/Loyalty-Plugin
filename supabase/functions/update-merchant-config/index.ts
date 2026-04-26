@@ -1,9 +1,10 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
+import { verifyAdminSecret } from '../_shared/admin-auth.ts';
 
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Origin': 'https://goself.netlify.app',
   'Access-Control-Allow-Methods': 'GET, POST, PATCH, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Client-Info, Apikey',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Client-Info, Apikey, X-Admin-Secret',
 };
 
 function json(body: unknown, status = 200) {
@@ -16,6 +17,10 @@ function json(body: unknown, status = 200) {
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response(null, { status: 200, headers: corsHeaders });
   if (req.method !== 'PATCH' && req.method !== 'POST') return json({ error: 'PATCH or POST required' }, 405);
+
+  if (!verifyAdminSecret(req)) {
+    return json({ error: 'Unauthorized' }, 401);
+  }
 
   try {
     const supabase = createClient(

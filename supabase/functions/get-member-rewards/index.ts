@@ -132,108 +132,93 @@ Deno.serve(async (req: Request) => {
       pointsBalance = sRows?.[0]?.points_balance ?? 0;
     }
 
+
     // ── 4. Fetch discount rewards (Shopify-backed) ────────────────────────────
-    const { data: rawDiscount } = await supabase
-      .from("rewards")
-      .select(
-        "id, title, description, reward_type, discount_value, points_cost, " +
-        "min_purchase_amount, currency, terms_conditions"
-      )
-      .eq("client_id", clientId)
-      .eq("is_active", true)
-      .order("points_cost", { ascending: true });
-
-    const discountRewards = (rawDiscount ?? [])
-      .filter((r: any) => r.reward_type !== "manual" && r.reward_type !== "brand_voucher")
-      .map((r: any) => ({
-      ...r,
-      category: "discount",
-      can_redeem: pointsBalance >= r.points_cost,
-    }));
-
-    // ── 5. Fetch brand rewards (marketplace, configured by client) ────────────
-    const { data: rawBrand } = await supabase
-      .from("client_brand_reward_configs")
-      .select(
-        "id, points_cost, note, " +
-        "reward:rewards!reward_id(" +
-          "id, title, description, value_description, voucher_count, coupon_type, generic_coupon_code, " +
-          "category, expiry_date, image_url, terms_conditions, " +
-          "brands!brand_id(id, name, logo_url, website_url)" +
-        ")"
-      )
-      .eq("client_id", clientId)
+    const { data: rawDistributions } = await supabase
+      .from("offer_distributions")
+      .select(`
+        id,
+        points_cost,
+        access_type,
+        max_per_member,
+        offer:rewards(
+          id, title, description, reward_type, offer_type, coupon_type,
+          discount_value, min_purchase_amount, currency, terms_conditions,
+          generic_coupon_code, available_codes, image_url, status, is_active
+        )
+      `)
+      .eq("distributing_client_id", clientId)
       .eq("is_active", true);
 
-    // Count live available (unassigned) vouchers per reward (only needed for unique-code rewards)
-    const brandRewardIds = (rawBrand ?? [])
-      .map((cfg: any) => cfg.reward?.id)
-      .filter((id: any) => {
-        const cfg = (rawBrand ?? []).find((c: any) => c.reward?.id === id);
-        return cfg?.reward?.coupon_type !== "generic";
-      });
+    const activeDistributions = (rawDistributions ?? []).filter((d: any) =>
+      d.offer && d.offer.is_active === true && d.offer.status === "active"
+    );
 
-    let availableVoucherCounts: Record<string, number> = {};
-    if (brandRewardIds.length > 0) {
-      const { data: vRows } = await supabase
-        .from("vouchers")
-        .select("reward_id")
-        .in("reward_id", brandRewardIds)
-        .is("member_id", null)
-        .eq("status", "available");
+    const discountRewards = activeDistributions
+      .filter((d: any) =>
+        d.offer.offer_type === "store_discount" ||
+        d.offer.offer_type === "marketplace_offer"
+      )
+      .map((d: any) => ({
+        id: d.offer.id,
+        distribution_id: d.id,
+        title: d.offer.title,
+        description: d.offer.description,
+        reward_type: d.offer.reward_type,
+        offer_type: d.offer.offer_type,
+        coupon_type: d.offer.coupon_type,
+        discount_value: d.offer.discount_value,
+        min_purchase_amount: d.offer.min_purchase_amount,
+        generic_coupon_code: d.offer.generic_coupon_code,
+        available_codes: d.offer.available_codes,
+        points_cost: d.points_cost,        // from offer_distributions, NOT rewards
+        access_type: d.access_type,
+        category: "discount",
+        can_redeem: pointsBalance >= (d.points_cost ?? 0),
+      }))
+      .sort((a: any, b: any) => (a.points_cost ?? 0) - (b.points_cost ?? 0));
 
-      for (const v of (vRows ?? [])) {
-        availableVoucherCounts[v.reward_id] = (availableVoucherCounts[v.reward_id] ?? 0) + 1;
-      }
-    }
-
-    const brandRewards = (rawBrand ?? [])
-      .filter((cfg: any) => {
-        if (!cfg.reward) return false;
-        // Generic code rewards are always available (same code given to everyone)
-        if (cfg.reward.coupon_type === "generic") return !!cfg.reward.generic_coupon_code;
-        // Unique code rewards need available vouchers in the pool
-        return (availableVoucherCounts[cfg.reward.id] ?? 0) > 0;
+    // ── 5. Fetch brand rewards (marketplace, configured by client) ────────────
+    const brandRewards = activeDistributions
+      .filter((d: any) => d.offer.offer_type === "partner_voucher")
+      .filter((d: any) => {
+        if (d.offer.coupon_type === "generic" && d.offer.generic_coupon_code) return true;
+        return (d.offer.available_codes ?? 0) > 0;
       })
-      .map((cfg: any) => ({
-        config_id: cfg.id,
-        reward_id: cfg.reward.id,
-        title: cfg.reward.title,
-        description: cfg.reward.description,
-        value_description: cfg.reward.value_description,
-        image_url: cfg.reward.image_url ?? null,
-        terms_conditions: cfg.reward.terms_conditions ?? null,
-        expiry_date: cfg.reward.expiry_date ?? null,
-        voucher_count: cfg.reward.voucher_count,
-        brand_name: cfg.reward.brands?.name ?? null,
-        brand_logo: cfg.reward.brands?.logo_url ?? null,
-        brand_website_url: cfg.reward.brands?.website_url ?? null,
-        category: cfg.reward.category ?? "brand",
-        coupon_type: cfg.reward.coupon_type ?? "unique",
-        generic_coupon_code: cfg.reward.coupon_type === "generic" ? cfg.reward.generic_coupon_code : null,
-        points_cost: cfg.points_cost,
-        note: cfg.note ?? null,
-        can_redeem: pointsBalance >= cfg.points_cost,
+      .map((d: any) => ({
+        config_id: d.id,
+        reward_id: d.offer.id,
+        title: d.offer.title,
+        description: d.offer.description,
+        value_description: d.offer.description,
+        image_url: d.offer.image_url ?? null,
+        coupon_type: d.offer.coupon_type ?? "unique",
+        generic_coupon_code: d.offer.coupon_type === "generic" ? d.offer.generic_coupon_code : null,
+        brand_name: null,
+        brand_logo: null,
+        brand_website_url: null,
+        category: "partner",
+        points_cost: d.points_cost,        // from offer_distributions
+        access_type: d.access_type,
+        can_redeem: pointsBalance >= (d.points_cost ?? 0),
         reward_type: "brand_voucher",
       }));
 
-    // ── 6. Fetch manual rewards ───────────────────────────────────────────────
-    const { data: rawManual } = await supabase
-      .from("rewards")
-      .select(
-        "id, title, description, points_cost, terms_conditions"
-      )
-      .eq("client_id", clientId)
-      .eq("reward_type", "manual")
-      .eq("is_active", true)
-      .order("points_cost", { ascending: true });
-
-    const manualRewards = (rawManual ?? []).map((r: any) => ({
-      ...r,
-      category: "manual",
-      reward_type: "manual",
-      can_redeem: pointsBalance >= r.points_cost,
-    }));
+    // ── 6. Fetch manual rewards (via offer_distributions — points_cost is authoritative there) ──
+    const manualRewards = activeDistributions
+      .filter((d: any) => d.offer.reward_type === "manual")
+      .map((d: any) => ({
+        id: d.offer.id,
+        distribution_id: d.id,
+        title: d.offer.title,
+        description: d.offer.description,
+        terms_conditions: d.offer.terms_conditions,
+        points_cost: d.points_cost,  // from offer_distributions
+        category: "manual",
+        reward_type: "manual",
+        can_redeem: pointsBalance >= (d.points_cost ?? 0),
+      }))
+      .sort((a: any, b: any) => (a.points_cost ?? 0) - (b.points_cost ?? 0));
 
     // ── 7a. Existing issued brand vouchers for this member ────────────────────
     const existingBrandCodes: Record<string, { code: string; expires_at: string | null }> = {};
@@ -241,18 +226,18 @@ Deno.serve(async (req: Request) => {
     if (memberUserId && brandRewards.length > 0) {
       const allBrandRewardIds = brandRewards.map((r: any) => r.reward_id);
 
-      // Unique codes: check vouchers table
+      // Unique codes: check offer_codes table (replaces legacy vouchers table)
       const uniqueBrandIds = brandRewards.filter((r: any) => r.coupon_type !== "generic").map((r: any) => r.reward_id);
       if (uniqueBrandIds.length > 0) {
-        const { data: bVouchers } = await supabase
-          .from("vouchers")
-          .select("reward_id, code, expires_at")
-          .eq("member_id", memberUserId)
-          .eq("status", "available")
-          .in("reward_id", uniqueBrandIds);
-        for (const v of (bVouchers ?? [])) {
-          if (v.reward_id && !existingBrandCodes[v.reward_id]) {
-            existingBrandCodes[v.reward_id] = { code: v.code, expires_at: v.expires_at };
+        const { data: bCodes } = await supabase
+          .from("offer_codes")
+          .select("offer_id, code, expires_at")
+          .eq("assigned_to_member_id", memberUserId)
+          .eq("status", "assigned")
+          .in("offer_id", uniqueBrandIds);
+        for (const c of (bCodes ?? [])) {
+          if (c.offer_id && !existingBrandCodes[c.offer_id]) {
+            existingBrandCodes[c.offer_id] = { code: c.code, expires_at: c.expires_at };
           }
         }
       }
@@ -268,8 +253,9 @@ Deno.serve(async (req: Request) => {
           .in("reference_id", genericBrandIds)
           .order("created_at", { ascending: false });
         for (const txn of (genTxns ?? [])) {
-          if (txn.reference_id && txn.metadata?.voucher_code && !existingBrandCodes[txn.reference_id]) {
-            existingBrandCodes[txn.reference_id] = { code: txn.metadata.voucher_code, expires_at: null };
+          const codeFromMeta = txn.metadata?.code || txn.metadata?.voucher_code || txn.metadata?.discount_code || null;
+          if (txn.reference_id && codeFromMeta && !existingBrandCodes[txn.reference_id]) {
+            existingBrandCodes[txn.reference_id] = { code: codeFromMeta, expires_at: null };
           }
         }
       }
@@ -281,15 +267,31 @@ Deno.serve(async (req: Request) => {
     if (memberUserId && discountRewards.length > 0) {
       const rewardIds = discountRewards.map((r: any) => r.id);
 
-      const { data: codes } = await supabase
-        .from("loyalty_discount_codes")
-        .select("reward_id, code, expires_at")
-        .eq("member_id", memberUserId)
-        .eq("is_used", false)
-        .in("reward_id", rewardIds);
+      // Check offer_codes first (new primary table)
+      const { data: offerCodeRows } = await supabase
+        .from("offer_codes")
+        .select("offer_id, code, expires_at")
+        .eq("assigned_to_member_id", memberUserId)
+        .eq("status", "assigned")
+        .in("offer_id", rewardIds);
 
-      if (codes) {
-        for (const c of codes) {
+      for (const c of (offerCodeRows ?? [])) {
+        if (c.offer_id && !existingCodes[c.offer_id]) {
+          existingCodes[c.offer_id] = { code: c.code, expires_at: c.expires_at };
+        }
+      }
+
+      // Fallback: loyalty_discount_codes (old Shopify discount codes)
+      const missingIds = rewardIds.filter((id: string) => !existingCodes[id]);
+      if (missingIds.length > 0) {
+        const { data: ldcRows } = await supabase
+          .from("loyalty_discount_codes")
+          .select("reward_id, code, expires_at")
+          .eq("member_id", memberUserId)
+          .eq("is_used", false)
+          .in("reward_id", missingIds);
+
+        for (const c of (ldcRows ?? [])) {
           if (c.reward_id && !existingCodes[c.reward_id]) {
             existingCodes[c.reward_id] = { code: c.code, expires_at: c.expires_at };
           }

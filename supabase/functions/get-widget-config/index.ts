@@ -16,7 +16,19 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    const { widget_id, shop_domain } = await req.json();
+    let widget_id: string | undefined;
+    let shop_domain: string | undefined;
+
+    try {
+      const body = await req.json();
+      widget_id = body.widget_id;
+      shop_domain = body.shop_domain;
+    } catch {
+      // Body missing or not JSON — try query params
+      const url = new URL(req.url);
+      widget_id = url.searchParams.get('widget_id') ?? undefined;
+      shop_domain = url.searchParams.get('shop_domain') ?? undefined;
+    }
 
     if (!widget_id) {
       return new Response(
@@ -54,9 +66,9 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // Track widget view
+    // Track widget view (non-critical — failure is logged but does not block response)
     if (config.id) {
-      await supabase
+      const { error: analyticsErr } = await supabase
         .from("widget_analytics")
         .insert({
           widget_config_id: config.id,
@@ -66,6 +78,9 @@ Deno.serve(async (req: Request) => {
             user_agent: req.headers.get("user-agent"),
           },
         });
+      if (analyticsErr) {
+        console.warn("widget_analytics insert failed:", analyticsErr.message);
+      }
     }
 
     return new Response(

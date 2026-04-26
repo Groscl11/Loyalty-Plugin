@@ -26,12 +26,6 @@ Deno.serve(async (req: Request) => {
     const shopDomain    = url.searchParams.get("shop_domain") || "";
     const memberUserId  = url.searchParams.get("member_user_id") || "";
 
-    // DIAGNOSTIC: Log request
-    if (memberUserId) {
-      // Assuming we can get email from member, but to keep simple, log memberUserId
-      console.log('[DIAG] get-earning-rules: Request for member_user_id:', memberUserId, 'shop_domain:', shopDomain);
-    }
-
     if (!shopDomain) return json({ error: "shop_domain is required" }, 400);
 
     // ── 1. Resolve client_id from shop_domain ─────────────────────────────────
@@ -77,11 +71,6 @@ Deno.serve(async (req: Request) => {
 
     if (!rules || rules.length === 0) {
       return json({ client_id: clientId, rules: [] });
-    }
-
-    // DIAGNOSTIC: Log rules fetched
-    if (memberUserId) {
-      console.log('[DIAG] get-earning-rules: Fetched rules count:', rules.length, 'for client:', clientId);
     }
 
     // ── 3. If member_user_id provided, check which rules member already completed ──
@@ -138,11 +127,6 @@ Deno.serve(async (req: Request) => {
       });
 
       return json({ client_id: clientId, rules: enriched });
-    }
-
-    // DIAGNOSTIC: Log enriched rules
-    if (memberUserId) {
-      console.log('[DIAG] get-earning-rules: Enriched rules:', enriched.map(r => ({ id: r.id, rule_type: r.rule_type, is_completed: r.is_completed, times_earned: r.times_earned })));
     }
 
     // No member — return rules without completion status

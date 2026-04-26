@@ -46,11 +46,6 @@ Deno.serve(async (req: Request) => {
 
     const normalizedEmail = email.trim().toLowerCase();
 
-    // DIAGNOSTIC: Log for specific user
-    if (normalizedEmail === 'groscl.ltd+8809@gmail.com') {
-      console.log('[DIAG] update-customer-profile: Starting for user', normalizedEmail, 'shop_domain:', shop_domain);
-    }
-
     // ── Resolve client_id from shop_domain ───────────────────────────────────
     let clientId: string | null = null;
 
@@ -75,11 +70,6 @@ Deno.serve(async (req: Request) => {
       return json({ error: 'Shop not found or not integrated', shop_domain }, 404);
     }
 
-    // DIAGNOSTIC: Log client resolution
-    if (normalizedEmail === 'groscl.ltd+8809@gmail.com') {
-      console.log('[DIAG] update-customer-profile: Resolved client_id:', clientId);
-    }
-
     // ── Resolve member ───────────────────────────────────────────────────────
     let { data: member } = await supabase
       .from('member_users')
@@ -101,11 +91,6 @@ Deno.serve(async (req: Request) => {
 
     if (!member) {
       return json({ error: 'Member not found' }, 404);
-    }
-
-    // DIAGNOSTIC: Log member found
-    if (normalizedEmail === 'groscl.ltd+8809@gmail.com') {
-      console.log('[DIAG] update-customer-profile: Found member id:', member.id, 'profile:', { full_name: member.full_name, phone: member.phone, dob: member.date_of_birth, anniv: member.anniversary_date });
     }
 
     // ── Build update payload ─────────────────────────────────────────────────
@@ -135,11 +120,6 @@ Deno.serve(async (req: Request) => {
       updates.anniversary_date = anniversary;
     }
 
-    // DIAGNOSTIC: Log updates payload
-    if (normalizedEmail === 'groscl.ltd+8809@gmail.com') {
-      console.log('[DIAG] update-customer-profile: Updates to apply:', updates);
-    }
-
     const { error: updateErr } = await supabase
       .from('member_users')
       .update(updates)
@@ -159,11 +139,6 @@ Deno.serve(async (req: Request) => {
     const profileNowComplete = !!(updatedFullName && updatedPhone && updatedDob && updatedAnniv);
     let pointsAwarded = 0;
     let profileRuleId: string | null = null;
-
-    // DIAGNOSTIC: Log profile completion check
-    if (normalizedEmail === 'groscl.ltd+8809@gmail.com') {
-      console.log('[DIAG] update-customer-profile: Profile now complete?', profileNowComplete, 'fields:', { fullName: updatedFullName, phone: updatedPhone, dob: updatedDob, anniv: updatedAnniv });
-    }
 
     // ── AUTO-ENROLLMENT: Ensure member is enrolled before awarding points ─────
     let statusRow = (await supabase
@@ -207,9 +182,6 @@ Deno.serve(async (req: Request) => {
 
           if (!enrollErr) {
             statusRow = newStatus;
-            if (normalizedEmail === 'groscl.ltd+8809@gmail.com') {
-              console.log('[DIAG] update-customer-profile: AUTO-ENROLLED member to default tier:', defaultTier.id);
-            }
           }
         }
       }
@@ -238,11 +210,6 @@ Deno.serve(async (req: Request) => {
           .filter('metadata->>rule_id', 'eq', profileRule.id)
           .maybeSingle();
 
-        // DIAGNOSTIC: Log rule and existing txn
-        if (normalizedEmail === 'groscl.ltd+8809@gmail.com') {
-          console.log('[DIAG] update-customer-profile: Found profile rule id:', profileRule.id, 'points:', profileRule.points_reward, 'existing txn:', !!existingTxn);
-        }
-
         if (!existingTxn) {
           const pts = profileRule.points_reward || 100;
 
@@ -269,11 +236,6 @@ Deno.serve(async (req: Request) => {
 
           pointsAwarded = pts;
         }
-
-        // DIAGNOSTIC: Log points awarded
-        if (normalizedEmail === 'groscl.ltd+8809@gmail.com') {
-          console.log('[DIAG] update-customer-profile: Awarded points:', pointsAwarded, 'for rule:', profileRuleId);
-        }
       }
     }
 
@@ -284,11 +246,6 @@ Deno.serve(async (req: Request) => {
       points_awarded:   pointsAwarded,
       profile_rule_id:  profileRuleId,
     });
-
-    // DIAGNOSTIC: Log final response
-    if (normalizedEmail === 'groscl.ltd+8809@gmail.com') {
-      console.log('[DIAG] update-customer-profile: Response:', { success: true, member_user_id: member.id, profile_complete: profileNowComplete, points_awarded: pointsAwarded, profile_rule_id: profileRuleId });
-    }
   } catch (err) {
     console.error('[update-customer-profile] unexpected error:', err);
     return json({ error: (err as Error).message }, 500);

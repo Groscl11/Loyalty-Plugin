@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:github.com)",
+      "Bash(mkdir -p scripts)",
+      "Bash(mv enroll-member.js enroll-user.js find-by-shop-id.js link-rules-to-program.js list-all.js verify-setup.js auto-deploy.js scripts/)",
+      "Bash(mkdir -p archived)",
+      "Bash(mv floating-widget:*)",
+      "Bash(mv loyalty-widget:*)",
+      "Bash(ls -1 --color=never *.*)",
+      "Bash(ls -1 --color=never -d */)",
+      "Bash(grep -l \"Allow-Origin.*'\\\\*'\" */index.ts)",
+      "Bash(grep -l \"Allow-Origin.*goself.netlify\" */index.ts)",
+      "Bash(grep -l 'Allow-Origin.*\"\\\\*\"' */index.ts)"
+    ]
+  }
+}

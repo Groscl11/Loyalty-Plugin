@@ -56,13 +56,27 @@ function CampaignRewardBanner() {
       (orderId ? '&shopify_order_id=' + encodeURIComponent(orderId) : '') +
       (customerEmail ? '&email=' + encodeURIComponent(customerEmail) : '');
 
-    fetch(url, { headers: { apikey: ANON_KEY, Authorization: 'Bearer ' + ANON_KEY } })
-      .then(function(r) { return r.json(); })
-      .then(function(data) {
-        if (data && data.has_rewards) setRewardData(data);
-      })
-      .catch(function() {})
-      .finally(function() { setChecked(true); });
+    var maxAttempts = 5;
+    var attempt = 0;
+    // Exponential backoff: 1s, 2s, 4s, 8s — Shopify webhooks typically fire within 1-2s
+    var retryDelays = [1000, 2000, 4000, 8000];
+    function tryFetch() {
+      attempt++;
+      fetch(url, { headers: { apikey: ANON_KEY, Authorization: 'Bearer ' + ANON_KEY } })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+          if (data && data.has_rewards) {
+            setRewardData(data);
+            setChecked(true);
+          } else if (data && data.pending && attempt < maxAttempts) {
+            setTimeout(tryFetch, retryDelays[attempt - 1] || 4000);
+          } else {
+            setChecked(true);
+          }
+        })
+        .catch(function() { setChecked(true); });
+    }
+    tryFetch();
   }, [shopDomain, campaignId]);
 
   // In editor: show sample banner so merchant can preview the layout

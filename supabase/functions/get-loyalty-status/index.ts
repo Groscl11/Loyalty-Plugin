@@ -1,6 +1,8 @@
-import { corsHeaders } from '../_shared/cors.ts';
+import { getCorsHeaders } from '../_shared/cors.ts';
 
 Deno.serve(async (req: Request) => {
+  const corsHeaders = getCorsHeaders(req.headers.get('origin'));
+
   if (req.method === 'OPTIONS') {
     return new Response(null, {
       status: 200,
@@ -15,25 +17,18 @@ Deno.serve(async (req: Request) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     );
 
-    // Support both GET (query params) and POST (body) requests
-    let memberUserId: string | null = null;
-    let email: string | null = null;
-    let shopDomain: string | null = null;
-    let clientId: string | null = null;
-
-    if (req.method === 'GET') {
-      const url = new URL(req.url);
-      memberUserId = url.searchParams.get('member_user_id');
-      email = url.searchParams.get('email');
-      shopDomain = url.searchParams.get('shop_domain');
-      clientId = url.searchParams.get('client_id');
-    } else if (req.method === 'POST') {
-      const body = await req.json();
-      memberUserId = body.member_user_id || null;
-      email = body.email || body.customer_email || null; // Support both 'email' and 'customer_email'
-      shopDomain = body.shop_domain || null;
-      clientId = body.client_id || null;
+    if (req.method !== 'POST') {
+      return new Response(
+        JSON.stringify({ error: 'POST required' }),
+        { status: 405, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
+
+    const body = await req.json();
+    const memberUserId: string | null = body.member_user_id || null;
+    const email: string | null = body.email || body.customer_email || null;
+    const shopDomain: string | null = body.shop_domain || null;
+    const clientId: string | null = body.client_id || null;
 
     if (!memberUserId && !email) {
       return new Response(
@@ -45,35 +40,29 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // DIAGNOSTIC: Log request
-    if (email && email.trim().toLowerCase() === 'groscl.ltd+8809@gmail.com') {
-      console.log('[DIAG] get-loyalty-status: Request for email:', email, 'shop_domain:', shopDomain);
-    }
-
     let memberUserIdToUse = memberUserId;
     let resolvedClientId = clientId;
 
     // If shop_domain is provided, find the client_id
-    // Try integration_configs first, then fall back to store_installations
+    // store_installations is the primary source of truth
     if (shopDomain && !resolvedClientId) {
-      const { data: integration } = await supabase
-        .from('integration_configs')
+      const { data: storeInstall } = await supabase
+        .from('store_installations')
         .select('client_id')
         .eq('shop_domain', shopDomain)
         .maybeSingle();
 
-      if (integration) {
-        resolvedClientId = integration.client_id;
+      if (storeInstall) {
+        resolvedClientId = storeInstall.client_id;
       } else {
-        // Fallback: check store_installations (created during Shopify OAuth)
-        const { data: storeInstall } = await supabase
-          .from('store_installations')
+        const { data: integration } = await supabase
+          .from('integration_configs')
           .select('client_id')
           .eq('shop_domain', shopDomain)
           .maybeSingle();
 
-        if (storeInstall) {
-          resolvedClientId = storeInstall.client_id;
+        if (integration) {
+          resolvedClientId = integration.client_id;
         }
       }
     }
@@ -151,11 +140,6 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // DIAGNOSTIC: Log status
-    if (email && email.trim().toLowerCase() === 'groscl.ltd+8809@gmail.com') {
-      console.log('[DIAG] get-loyalty-status: Status data:', { points_balance: statusData.points_balance, lifetime_earned: statusData.lifetime_points_earned, recent_txns: recentTransactions?.length });
-    }
-
     // Use member_loyalty_status.referral_code as source of truth; fall back to UUID-derived code
     memberReferralCode = statusData.referral_code || (memberUserIdToUse ? memberUserIdToUse.replace(/-/g, '').slice(0, 8).toUpperCase() : null);
 
@@ -169,6 +153,43 @@ Deno.serve(async (req: Request) => {
       .eq('member_loyalty_status_id', status.id)
       .order('created_at', { ascending: false })
       .limit(10);
+
+    // Fetch active survey for this client
+    let activeSurvey = null;
+    let surveyCompleted = false;
+
+    if (resolvedClientId && memberUserIdToUse) {
+      const { data: survey } = await supabase
+        .from('loyalty_surveys')
+        .select('id, title, questions, points_reward, headline')
+        .eq('client_id', resolvedClientId)
+        .eq('is_active', true)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (survey) {
+        activeSurvey = survey;
+
+        const { data: completion } = await supabase
+          .from('survey_completions')
+          .select('id')
+          .eq('member_user_id', memberUserIdToUse)
+          .eq('survey_id', survey.id)
+          .maybeSingle();
+        surveyCompleted = !!completion;
+
+        if (!surveyCompleted) {
+          const { data: response } = await supabase
+            .from('survey_responses')
+            .select('id')
+            .eq('member_user_id', memberUserIdToUse)
+            .eq('survey_id', survey.id)
+            .maybeSingle();
+          surveyCompleted = !!response;
+        }
+      }
+    }
 
     return new Response(
       JSON.stringify({
@@ -197,6 +218,9 @@ Deno.serve(async (req: Request) => {
           allow_redemption: program.allow_redemption,
         },
         recent_transactions: recentTransactions || [],
+        survey: activeSurvey,
+        active_survey: activeSurvey,
+        survey_completed: surveyCompleted,
       }),
       {
         status: 200,
