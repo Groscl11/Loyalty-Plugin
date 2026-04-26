@@ -4,7 +4,7 @@
 
 client_id = "863caa8c8eff3c0fbb3ef53589e5ccee"
 name = "Loyalty by Goself (Dev)"
-application_url = "https://develop.ai.goself.in"
+application_url = "https://dev.app.goself.in"
 embedded = false
 
 [webhooks]
