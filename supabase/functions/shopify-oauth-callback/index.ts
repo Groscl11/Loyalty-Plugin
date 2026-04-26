@@ -1,7 +1,10 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { verifyOAuthHmac } from '../_shared/shopify-hmac.ts';
 
-const DASHBOARD_URL = 'https://goself.netlify.app';
+// Set SHOPIFY_APP_URL secret per environment:
+//   prod: https://ai.goself.in
+//   dev:  https://develop.ai.goself.in
+const DASHBOARD_URL = Deno.env.get('SHOPIFY_APP_URL') ?? 'https://ai.goself.in';
 
 function redirect(url: string) {
   return new Response(null, { status: 302, headers: { Location: url } });

@@ -2,7 +2,7 @@
 
 client_id = "3290e6e4e5cb6711e4a7876ef40f87e8"
 name = " Loyalty by Goself"
-application_url = "https://goself.netlify.app"
+application_url = "https://ai.goself.in"
 embedded = false
 
 [webhooks]

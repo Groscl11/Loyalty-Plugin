@@ -2,16 +2,26 @@
  * CORS configuration for GoSelf edge functions.
  *
  * Allowed origins:
- *  - The GoSelf admin dashboard (Netlify)
- *  - Shopify storefronts — stored in ALLOWED_SHOPIFY_ORIGINS env var as
+ *  - app.goself.in        — production client portal
+ *  - dev.app.goself.in    — development client portal
+ *  - ai.goself.in         — production Shopify app URL
+ *  - develop.ai.goself.in — development Shopify app URL
+ *  - Shopify storefronts  — stored in ALLOWED_SHOPIFY_ORIGINS env var as
  *    a comma-separated list, e.g.:
  *    "https://yourstore.myshopify.com,https://anotherstore.myshopify.com"
  *
  * Set ALLOWED_SHOPIFY_ORIGINS as a Supabase edge function secret.
- * The fallback is the dashboard origin only.
+ * The fallback is the production dashboard origin.
  */
 
-const DASHBOARD_ORIGIN = 'https://goself.netlify.app';
+const DASHBOARD_ORIGIN = 'https://app.goself.in';
+
+const ALWAYS_ALLOWED = [
+  'https://app.goself.in',
+  'https://dev.app.goself.in',
+  'https://ai.goself.in',
+  'https://develop.ai.goself.in',
+];
 
 function getAllowedOrigins(): string[] {
   const extra = Deno.env.get('ALLOWED_SHOPIFY_ORIGINS') || '';
@@ -19,7 +29,7 @@ function getAllowedOrigins(): string[] {
     .split(',')
     .map(o => o.trim())
     .filter(Boolean);
-  return [DASHBOARD_ORIGIN, ...shopifyOrigins];
+  return [...ALWAYS_ALLOWED, ...shopifyOrigins];
 }
 
 export function getCorsHeaders(origin: string | null): Record<string, string> {
