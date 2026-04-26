@@ -14,19 +14,6 @@ api_version = "2026-01"
   topics = ["orders/create", "orders/paid"]
   uri = "https://jblqyvicxhmqqjhostcj.supabase.co/functions/v1/shopify-order-webhook"
 
-  # GDPR mandatory webhooks
-  [[webhooks.subscriptions]]
-  topics = ["customers/data_request"]
-  uri = "https://jblqyvicxhmqqjhostcj.supabase.co/functions/v1/shopify-customers-data-request"
-
-  [[webhooks.subscriptions]]
-  topics = ["customers/redact"]
-  uri = "https://jblqyvicxhmqqjhostcj.supabase.co/functions/v1/shopify-customers-redact"
-
-  [[webhooks.subscriptions]]
-  topics = ["shop/redact"]
-  uri = "https://jblqyvicxhmqqjhostcj.supabase.co/functions/v1/shopify-shop-redact"
-
 [access_scopes]
 scopes = "read_customers,read_orders,read_discounts,write_discounts"
 optional_scopes = []
