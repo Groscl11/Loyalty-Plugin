@@ -7,13 +7,6 @@ name = "Loyalty by Goself (Dev)"
 application_url = "https://develop.ai.goself.in"
 embedded = false
 
-[webhooks]
-api_version = "2026-01"
-
-[[webhooks.subscriptions]]
-  topics = ["orders/create", "orders/paid"]
-  uri = "https://jblqyvicxhmqqjhostcj.supabase.co/functions/v1/shopify-order-webhook"
-
 [access_scopes]
 scopes = "read_customers,read_orders,read_discounts,write_discounts"
 optional_scopes = []
