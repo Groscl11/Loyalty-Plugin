@@ -26,20 +26,29 @@ name = "Loyalty Rewards Widget"
 handle = "loyalty-widget"
 directory = "extensions/loyalty-widget"
 
-[[extensions]]
-type = "ui_extension"
-name = "Referral Widget"
-handle = "referral-widget"
-directory = "extensions/referral-widget"
-
-[[extensions]]
-type = "ui_extension"
-name = "Show Points Earned On This Order"
-handle = "order-status-rewards"
-directory = "extensions/points-earned"
-
-[[extensions]]
-type = "ui_extension"
-name = "Order Rewards & Referral"
-handle = "order-rewards"
-directory = "extensions/order-rewards"
+# UI extensions below are commented out until network access is approved in
+# Shopify Partners Dashboard. Once approved, uncomment and redeploy.
+#
+# [[extensions]]
+# type = "ui_extension"
+# name = "Referral Widget"
+# handle = "referral-widget"
+# directory = "extensions/referral-widget"
+#
+# [[extensions]]
+# type = "ui_extension"
+# name = "Show Points Earned On This Order"
+# handle = "order-status-rewards"
+# directory = "extensions/points-earned"
+#
+# [[extensions]]
+# type = "ui_extension"
+# name = "Order Rewards & Referral"
+# handle = "order-rewards"
+# directory = "extensions/order-rewards"
+#
+# [[extensions]]
+# type = "ui_extension"
+# name = "Campaign Reward Banner"
+# handle = "campaign-reward-banner"
+# directory = "extensions/campaign-reward-banner"
