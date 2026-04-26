@@ -65,20 +65,51 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // ── 2. Fetch active rewards ─────────────────────────────────────────────
-    const { data: rewards } = await supabase
-      .from("rewards")
-      .select("id, title, description, reward_type, discount_value, points_cost, min_purchase_amount, currency, terms_conditions")
-      .eq("client_id", clientId)
-      .eq("is_active", true)
-      .order("points_cost", { ascending: true });
+    // ── 2. Fetch active distributions with reward details ───────────────────
+    // points_cost lives in offer_distributions, not rewards
+    const { data: rawDists } = await supabase
+      .from("offer_distributions")
+      .select(`
+        id,
+        points_cost,
+        access_type,
+        offer:rewards(
+          id, title, description, reward_type, offer_type, coupon_type,
+          discount_value, min_purchase_amount, currency, terms_conditions,
+          generic_coupon_code, available_codes, is_active
+        )
+      `)
+      .eq("distributing_client_id", clientId)
+      .eq("is_active", true);
 
-    if (!rewards || rewards.length === 0) {
+    const activeDists = (rawDists ?? []).filter(
+      (d: any) => d.offer && d.offer.is_active === true
+    );
+
+    if (activeDists.length === 0) {
       return new Response(
         JSON.stringify({ rewards: [], existing_codes: {} }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
+
+    const rewards = activeDists.map((d: any) => ({
+      id: d.offer.id,
+      distribution_id: d.id,
+      title: d.offer.title,
+      description: d.offer.description,
+      reward_type: d.offer.reward_type,
+      offer_type: d.offer.offer_type,
+      coupon_type: d.offer.coupon_type,
+      discount_value: d.offer.discount_value,
+      min_purchase_amount: d.offer.min_purchase_amount,
+      currency: d.offer.currency,
+      terms_conditions: d.offer.terms_conditions,
+      generic_coupon_code: d.offer.coupon_type === "generic" ? d.offer.generic_coupon_code : null,
+      available_codes: d.offer.available_codes,
+      points_cost: d.points_cost,  // from offer_distributions, NOT rewards
+      access_type: d.access_type,
+    })).sort((a: any, b: any) => (a.points_cost ?? 0) - (b.points_cost ?? 0));
 
     // ── 3. Fetch existing unused codes for this member ──────────────────────
     const existingCodes: Record<string, { code: string; expires_at: string | null }> = {};
@@ -86,15 +117,31 @@ Deno.serve(async (req: Request) => {
     if (memberUserId) {
       const rewardIds = rewards.map((r: any) => r.id);
 
-      const { data: codes } = await supabase
-        .from("loyalty_discount_codes")
-        .select("reward_id, code, expires_at")
-        .eq("member_id", memberUserId)
-        .eq("is_used", false)
-        .in("reward_id", rewardIds);
+      // Check offer_codes first (primary table)
+      const { data: offerCodes } = await supabase
+        .from("offer_codes")
+        .select("offer_id, code, expires_at")
+        .eq("assigned_to_member_id", memberUserId)
+        .eq("status", "assigned")
+        .in("offer_id", rewardIds);
 
-      if (codes) {
-        for (const c of codes) {
+      for (const c of (offerCodes ?? [])) {
+        if (c.offer_id && !existingCodes[c.offer_id]) {
+          existingCodes[c.offer_id] = { code: c.code, expires_at: c.expires_at };
+        }
+      }
+
+      // Fallback: loyalty_discount_codes (Shopify-generated codes)
+      const missingIds = rewardIds.filter((id: string) => !existingCodes[id]);
+      if (missingIds.length > 0) {
+        const { data: ldcRows } = await supabase
+          .from("loyalty_discount_codes")
+          .select("reward_id, code, expires_at")
+          .eq("member_id", memberUserId)
+          .eq("is_used", false)
+          .in("reward_id", missingIds);
+
+        for (const c of (ldcRows ?? [])) {
           if (c.reward_id && !existingCodes[c.reward_id]) {
             existingCodes[c.reward_id] = { code: c.code, expires_at: c.expires_at };
           }

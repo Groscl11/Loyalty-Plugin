@@ -1,3 +1,11 @@
+/**
+ * get-customer-rewards
+ * POST /get-customer-rewards { customer_email, shop_domain?, shop?, client_id? }
+ *
+ * Returns issued codes (offer_codes) and the available reward catalog
+ * (offer_distributions JOIN rewards) for a member.
+ */
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
@@ -26,58 +34,88 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // Resolve client_id from shop_domain
-    let resolvedClientId = client_id || null;
+    // ── Resolve client_id ─────────────────────────────────────────────────────
+    let resolvedClientId: string | null = client_id || null;
     const shopDomain = shop_domain || shop || null;
 
     if (shopDomain && !resolvedClientId) {
-      const { data: inst } = await supabase
+      const { data: si } = await supabase
         .from('store_installations')
         .select('client_id')
         .eq('shop_domain', shopDomain)
         .eq('installation_status', 'active')
         .maybeSingle();
-      resolvedClientId = inst?.client_id || null;
+      resolvedClientId = si?.client_id || null;
+
+      if (!resolvedClientId) {
+        const { data: ic } = await supabase
+          .from('integration_configs')
+          .select('client_id')
+          .eq('shop_domain', shopDomain)
+          .maybeSingle();
+        resolvedClientId = ic?.client_id || null;
+      }
     }
 
-    // Find member
-    let memberQuery = supabase.from('member_users').select('id, client_id').eq('email', customer_email);
+    // ── Find member ───────────────────────────────────────────────────────────
+    let memberQuery = supabase
+      .from('member_users')
+      .select('id, client_id')
+      .eq('email', customer_email.trim().toLowerCase());
+
     if (resolvedClientId) memberQuery = memberQuery.eq('client_id', resolvedClientId);
+
     const { data: member } = await memberQuery.maybeSingle();
 
     if (!member) {
       return new Response(
-        JSON.stringify({ success: true, rewards: [], vouchers: [], message: 'Member not found' }),
+        JSON.stringify({ success: true, vouchers: [], rewards: [], message: 'Member not found' }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    // Get available and redeemed vouchers
-    const { data: vouchers } = await supabase
-      .from('reward_vouchers')
-      .select('voucher_code, status, expires_at, reward:rewards(title, description, discount_value, reward_type)')
-      .eq('member_id', member.id)
-      .in('status', ['available', 'redeemed'])
+    const effectiveClientId = resolvedClientId || member.client_id;
+
+    // ── Fetch issued codes from offer_codes ───────────────────────────────────
+    const { data: issuedCodes } = await supabase
+      .from('offer_codes')
+      .select('id, code, status, expires_at, assigned_at, offer:rewards(id, title, description, discount_value, offer_type)')
+      .eq('assigned_to_member_id', member.id)
+      .in('status', ['assigned', 'used'])
       .limit(20);
 
-    // Get reward allocations
-    const { data: allocations } = await supabase
-      .from('member_rewards_allocation')
-      .select('*, reward:rewards(title, description, discount_value, reward_type, generic_coupon_code)')
-      .eq('member_id', member.id)
-      .gt('quantity_allocated', 0);
+    // ── Fetch available reward catalog via offer_distributions ─────────────────
+    const { data: distributions } = await supabase
+      .from('offer_distributions')
+      .select('id, points_cost, offer:rewards(id, title, description, discount_value, offer_type, coupon_type, generic_coupon_code, is_active, status)')
+      .eq('distributing_client_id', effectiveClientId)
+      .eq('is_active', true);
+
+    const activeRewards = (distributions ?? [])
+      .filter((d: any) => d.offer?.is_active === true && d.offer?.status === 'active')
+      .map((d: any) => ({
+        id: d.offer.id,
+        distribution_id: d.id,
+        title: d.offer.title,
+        description: d.offer.description,
+        discount_value: d.offer.discount_value,
+        offer_type: d.offer.offer_type,
+        coupon_type: d.offer.coupon_type,
+        generic_coupon_code: d.offer.coupon_type === 'generic' ? d.offer.generic_coupon_code : null,
+        points_cost: d.points_cost,
+      }));
 
     return new Response(
       JSON.stringify({
         success: true,
         member_id: member.id,
-        vouchers: vouchers || [],
-        rewards: allocations || [],
+        vouchers: issuedCodes ?? [],
+        rewards: activeRewards,
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 
-  } catch (error) {
+  } catch (error: any) {
     console.error('get-customer-rewards error:', error);
     return new Response(
       JSON.stringify({ success: false, error: error.message }),

@@ -54,19 +54,32 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // Find client by shop domain
-    const { data: integration, error: integrationError } = await supabase
-      .from('integration_configs')
+    // Find client by shop domain — store_installations is primary, integration_configs is fallback
+    let clientId: string | null = null;
+
+    const { data: installation } = await supabase
+      .from('store_installations')
       .select('client_id')
       .eq('shop_domain', shop_domain)
+      .eq('installation_status', 'active')
       .maybeSingle();
 
-    if (integrationError || !integration) {
+    if (installation?.client_id) {
+      clientId = installation.client_id;
+    } else {
+      const { data: integration } = await supabase
+        .from('integration_configs')
+        .select('client_id')
+        .eq('shop_domain', shop_domain)
+        .maybeSingle();
+      clientId = integration?.client_id ?? null;
+    }
+
+    if (!clientId) {
       return new Response(
         JSON.stringify({
           error: 'Shop not found or not integrated',
           shop_domain,
-          details: integrationError?.message
         }),
         {
           status: 404,
@@ -74,8 +87,6 @@ Deno.serve(async (req: Request) => {
         }
       );
     }
-
-    const clientId = integration.client_id;
 
     // Find member user
     let query = supabase

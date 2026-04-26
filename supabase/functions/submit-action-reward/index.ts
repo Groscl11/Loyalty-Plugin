@@ -169,12 +169,24 @@ Deno.serve(async (req: Request) => {
       .maybeSingle();
 
     if (!loyaltyStatus) {
-      // Get default tier
+      // Resolve the loyalty program for this client
+      const { data: program } = await supabase
+        .from('loyalty_programs')
+        .select('id')
+        .eq('client_id', clientId)
+        .eq('is_active', true)
+        .maybeSingle();
+
+      if (!program) {
+        return json({ error: 'No active loyalty program found for this shop' }, 404);
+      }
+
+      // Get default tier scoped to this program
       const { data: defaultTier } = await supabase
         .from('loyalty_tiers')
         .select('id')
+        .eq('loyalty_program_id', program.id)
         .eq('is_default', true)
-        .limit(1)
         .maybeSingle();
 
       const tierId = defaultTier?.id || null;
@@ -183,7 +195,7 @@ Deno.serve(async (req: Request) => {
         .from('member_loyalty_status')
         .insert({
           member_user_id: memberUserId,
-          loyalty_program_id: null,
+          loyalty_program_id: program.id,
           current_tier_id: tierId,
           points_balance: 0,
           lifetime_points_earned: 0,

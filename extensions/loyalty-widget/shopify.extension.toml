@@ -226,6 +226,12 @@ default = true
 
 [[blocks.settings.fields]]
 type = "checkbox"
+id = "show_survey_on_home"
+label = "Show survey on home screen"
+default = false
+
+[[blocks.settings.fields]]
+type = "checkbox"
 id = "show_partner_brands"
 label = "Show partner brand redemptions"
 default = true

@@ -144,7 +144,12 @@ Deno.serve(async (req: Request) => {
         .eq('is_active', true)
         .maybeSingle();
 
-      const SURVEY_BONUS = surveyRule?.points_reward || 50; // Fallback to 50 if no rule
+      if (!surveyRule) {
+        // No active survey earning rule configured — skip points award silently
+        console.warn('[submit-survey-response] No active survey earning rule found for client:', clientId);
+        return json({ success: true, member_user_id: memberUserId, points_awarded: 0 });
+      }
+      const SURVEY_BONUS = surveyRule.points_reward;
 
       const { data: loyaltyStatus } = await supabase
         .from('member_loyalty_status')

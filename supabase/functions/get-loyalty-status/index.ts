@@ -44,26 +44,25 @@ Deno.serve(async (req: Request) => {
     let resolvedClientId = clientId;
 
     // If shop_domain is provided, find the client_id
-    // Try integration_configs first, then fall back to store_installations
+    // store_installations is the primary source of truth
     if (shopDomain && !resolvedClientId) {
-      const { data: integration } = await supabase
-        .from('integration_configs')
+      const { data: storeInstall } = await supabase
+        .from('store_installations')
         .select('client_id')
         .eq('shop_domain', shopDomain)
         .maybeSingle();
 
-      if (integration) {
-        resolvedClientId = integration.client_id;
+      if (storeInstall) {
+        resolvedClientId = storeInstall.client_id;
       } else {
-        // Fallback: check store_installations (created during Shopify OAuth)
-        const { data: storeInstall } = await supabase
-          .from('store_installations')
+        const { data: integration } = await supabase
+          .from('integration_configs')
           .select('client_id')
           .eq('shop_domain', shopDomain)
           .maybeSingle();
 
-        if (storeInstall) {
-          resolvedClientId = storeInstall.client_id;
+        if (integration) {
+          resolvedClientId = integration.client_id;
         }
       }
     }
@@ -155,6 +154,43 @@ Deno.serve(async (req: Request) => {
       .order('created_at', { ascending: false })
       .limit(10);
 
+    // Fetch active survey for this client
+    let activeSurvey = null;
+    let surveyCompleted = false;
+
+    if (resolvedClientId && memberUserIdToUse) {
+      const { data: survey } = await supabase
+        .from('loyalty_surveys')
+        .select('id, title, questions, points_reward, headline')
+        .eq('client_id', resolvedClientId)
+        .eq('is_active', true)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (survey) {
+        activeSurvey = survey;
+
+        const { data: completion } = await supabase
+          .from('survey_completions')
+          .select('id')
+          .eq('member_user_id', memberUserIdToUse)
+          .eq('survey_id', survey.id)
+          .maybeSingle();
+        surveyCompleted = !!completion;
+
+        if (!surveyCompleted) {
+          const { data: response } = await supabase
+            .from('survey_responses')
+            .select('id')
+            .eq('member_user_id', memberUserIdToUse)
+            .eq('survey_id', survey.id)
+            .maybeSingle();
+          surveyCompleted = !!response;
+        }
+      }
+    }
+
     return new Response(
       JSON.stringify({
         member_user_id: memberUserIdToUse,
@@ -182,6 +218,9 @@ Deno.serve(async (req: Request) => {
           allow_redemption: program.allow_redemption,
         },
         recent_transactions: recentTransactions || [],
+        survey: activeSurvey,
+        active_survey: activeSurvey,
+        survey_completed: surveyCompleted,
       }),
       {
         status: 200,
