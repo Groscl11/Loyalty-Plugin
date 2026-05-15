@@ -1,12 +1,15 @@
 /**
  * supabase.js — shared Supabase credentials.
  * Single source of truth — import from here everywhere.
+ *
+ * __SUPABASE_URL__ and __SUPABASE_ANON_KEY__ are replaced at build time
+ * by esbuild --define (see package.json build scripts).
+ * Production build uses prod Supabase; staging build uses staging Supabase.
  */
 
-export const SUPABASE_URL = 'https://lizgppzyyljqbmzdytia.supabase.co';
+export const SUPABASE_URL = __SUPABASE_URL__;
 
-export const SUPABASE_ANON_KEY =
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxpemdwcHp5eWxqcWJtemR5dGlhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQ0MDE0MDYsImV4cCI6MjA3OTk3NzQwNn0.E5yJHY4mjOvLiqZCfCp9vnNC7xsRAlBSdW55YE2RPC0';
+export const SUPABASE_ANON_KEY = __SUPABASE_ANON_KEY__;
 
 export const SUPABASE_HEADERS = {
   'Content-Type': 'application/json',
