@@ -27,7 +27,7 @@ function OrderStatusWidget() {
   const email = customer && customer.email ? customer.email : '';
   const shopDomain = shop && shop.myshopifyDomain ? shop.myshopifyDomain : '';
   const orderId = order && order.id ? String(order.id).split('/').pop() : '';
-  const projectId = settings && settings.supabase_project_id ? settings.supabase_project_id : 'lizgppzyyljqbmzdytia';
+  const projectId = settings && settings.supabase_project_id ? settings.supabase_project_id : 'jblqyvicxhmqqjhostcj';
   const supabaseCfg = SUPABASE_CONFIGS[projectId] || SUPABASE_CONFIGS['lizgppzyyljqbmzdytia'];
   const SUPABASE_URL = supabaseCfg.url;
   const SUPABASE_ANON_KEY = supabaseCfg.key;

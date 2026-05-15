@@ -27,7 +27,7 @@ function PointsEarnedWidget() {
   const shopDomain = shop ? shop.myshopifyDomain : '';
   const customerEmail = hookEmail || '';
   const headingText = settings && settings.heading_text ? settings.heading_text : 'Points Earned on This Order';
-  const projectId = settings && settings.supabase_project_id ? settings.supabase_project_id : 'lizgppzyyljqbmzdytia';
+  const projectId = settings && settings.supabase_project_id ? settings.supabase_project_id : 'jblqyvicxhmqqjhostcj';
   const supabaseCfg = SUPABASE_CONFIGS[projectId] || SUPABASE_CONFIGS['lizgppzyyljqbmzdytia'];
   const SUPABASE_URL = supabaseCfg.url;
   const SUPABASE_ANON_KEY = supabaseCfg.key;
