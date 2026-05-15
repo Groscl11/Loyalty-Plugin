@@ -10,6 +10,23 @@ embedded = false
 [webhooks]
 api_version = "2026-01"
 
+[[webhooks.subscriptions]]
+  topics = ["orders/create", "orders/paid"]
+  uri = "https://jblqyvicxhmqqjhostcj.supabase.co/functions/v1/shopify-order-webhook"
+
+  # GDPR mandatory webhooks
+  [[webhooks.subscriptions]]
+  topics = ["customers/data_request"]
+  uri = "https://jblqyvicxhmqqjhostcj.supabase.co/functions/v1/shopify-customers-data-request"
+
+  [[webhooks.subscriptions]]
+  topics = ["customers/redact"]
+  uri = "https://jblqyvicxhmqqjhostcj.supabase.co/functions/v1/shopify-customers-redact"
+
+  [[webhooks.subscriptions]]
+  topics = ["shop/redact"]
+  uri = "https://jblqyvicxhmqqjhostcj.supabase.co/functions/v1/shopify-shop-redact"
+
 [access_scopes]
 scopes = "read_customers,read_orders,read_discounts,write_discounts"
 optional_scopes = []
@@ -26,26 +43,25 @@ name = "Loyalty Rewards Widget"
 handle = "loyalty-widget"
 directory = "extensions/loyalty-widget"
 
-# UI extensions below are commented out until network access is approved in
-# Shopify Partners Dashboard. Once approved, uncomment and redeploy.
-#
+# Post-purchase and customer account UI extensions
+[[extensions]]
+type = "ui_extension"
+name = "Show Points Earned On This Order"
+handle = "order-status-rewards"
+directory = "extensions/points-earned"
+
+[[extensions]]
+type = "ui_extension"
+name = "Order Rewards & Referral"
+handle = "order-rewards"
+directory = "extensions/order-rewards"
+
+# Uncomment when referral-widget and campaign-reward-banner network access is approved:
 # [[extensions]]
 # type = "ui_extension"
 # name = "Referral Widget"
 # handle = "referral-widget"
 # directory = "extensions/referral-widget"
-#
-# [[extensions]]
-# type = "ui_extension"
-# name = "Show Points Earned On This Order"
-# handle = "order-status-rewards"
-# directory = "extensions/points-earned"
-#
-# [[extensions]]
-# type = "ui_extension"
-# name = "Order Rewards & Referral"
-# handle = "order-rewards"
-# directory = "extensions/order-rewards"
 #
 # [[extensions]]
 # type = "ui_extension"

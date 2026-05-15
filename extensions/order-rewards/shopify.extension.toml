@@ -22,6 +22,13 @@ api_access = true
 
 [extensions.settings]
 [[extensions.settings.fields]]
+key = "supabase_project_id"
+type = "single_line_text_field"
+name = "Supabase Project ID"
+description = "Internal: jblqyvicxhmqqjhostcj (staging) or lizgppzyyljqbmzdytia (prod)"
+default = "jblqyvicxhmqqjhostcj"
+
+[[extensions.settings.fields]]
 key = "heading_text"
 type = "single_line_text_field"
 name = "Heading Text"

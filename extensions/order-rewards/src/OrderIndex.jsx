@@ -1,8 +1,16 @@
 ﻿import React, { useState, useEffect } from 'react';
 import { reactExtension, BlockStack, InlineStack, Text, Button, Link, Heading, Divider, useCustomer, useShop, useSettings } from '@shopify/ui-extensions-react/customer-account';
 
-const SUPABASE_URL = 'https://lizgppzyyljqbmzdytia.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxpemdwcHp5eWxqcWJtemR5dGlhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQ0MDE0MDYsImV4cCI6MjA3OTk3NzQwNn0.E5yJHY4mjOvLiqZCfCp9vnNC7xsRAlBSdW55YE2RPC0';
+const SUPABASE_CONFIGS = {
+  'lizgppzyyljqbmzdytia': {
+    url: 'https://lizgppzyyljqbmzdytia.supabase.co',
+    key: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxpemdwcHp5eWxqcWJtemR5dGlhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQ0MDE0MDYsImV4cCI6MjA3OTk3NzQwNn0.E5yJHY4mjOvLiqZCfCp9vnNC7xsRAlBSdW55YE2RPC0',
+  },
+  'jblqyvicxhmqqjhostcj': {
+    url: 'https://jblqyvicxhmqqjhostcj.supabase.co',
+    key: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpibHF5dmljeGhtcXFqaG9zdGNqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcxOTU1MTAsImV4cCI6MjA5Mjc3MTUxMH0.pMOn3TKgzp_QqJgOlMzwO7ZRRex-mifWUzhJPwxUndE',
+  },
+};
 
 export default reactExtension('customer-account.order-index.block.render', () => <OrderIndexWidget />);
 
@@ -16,6 +24,10 @@ function OrderIndexWidget() {
 
   const email = customer && customer.email ? customer.email : '';
   const shopDomain = shop && shop.myshopifyDomain ? shop.myshopifyDomain : '';
+  const projectId = settings && settings.supabase_project_id ? settings.supabase_project_id : 'lizgppzyyljqbmzdytia';
+  const supabaseCfg = SUPABASE_CONFIGS[projectId] || SUPABASE_CONFIGS['lizgppzyyljqbmzdytia'];
+  const SUPABASE_URL = supabaseCfg.url;
+  const SUPABASE_ANON_KEY = supabaseCfg.key;
 
   useEffect(function() {
     if (!email || !shopDomain) { setLoading(false); return; }
