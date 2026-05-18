@@ -1,41 +1,29 @@
 import React, { useState, useEffect } from 'react';
-import { reactExtension, Banner, Button, BlockStack, InlineStack, Text, Link, Divider, useShop, useSettings, useEmail, usePhone, useApi, useSubscription, useExtensionEditor } from '@shopify/ui-extensions-react/checkout';
+import { reactExtension, Banner, Button, BlockStack, InlineStack, Text, Link, Divider, useShop, useSettings, useCustomer, useOrder, useExtensionEditor } from '@shopify/ui-extensions-react/customer-account';
 
 const _env = (function() { try { return process.env || {}; } catch(e) { return {}; } })();
 const SUPABASE_URL      = _env.SUPABASE_URL      || 'https://jblqyvicxhmqqjhostcj.supabase.co';
 const SUPABASE_ANON_KEY = _env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpibHF5dmljeGhtcXFqaG9zdGNqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcxOTU1MTAsImV4cCI6MjA5Mjc3MTUxMH0.pMOn3TKgzp_QqJgOlMzwO7ZRRex-mifWUzhJPwxUndE';
 
-// usePhone() on Shopify's thank-you page is unreliable: it may return empty or
-// return the number without a country-code prefix.  We pass the order ID as a
-// secondary identifier so the backend can resolve the member via the points
-// transaction once the webhook fires (~3-10 s after checkout).
-var EMPTY_SUBSCRIBABLE = Object.freeze({ current: null, subscribe: function() { return function() {}; } });
-// Uniform 1 s polling — catches the webhook within 1 s of completion (same
-// strategy as campaign-reward-banner).
-var RETRY_DELAYS = [1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000];
+var RETRY_DELAYS = [1000, 2500, 5000, 10000];
 
-export default reactExtension('purchase.thank-you.block.render', () => <ReferralWidget />);
+export const forOrderStatus = reactExtension('customer-account.order-status.block.render', () => <ReferralWidgetOrderStatus />);
 
-function ReferralWidget() {
-  let shop, settings, hookEmail, hookPhone, apiObj, editor;
+function ReferralWidgetOrderStatus() {
+  let shop, settings, customer, order, editor;
   try { shop = useShop(); } catch(e) { shop = null; }
   try { settings = useSettings(); } catch(e) { settings = null; }
-  try { hookEmail = useEmail(); } catch(e) { hookEmail = ''; }
-  try { hookPhone = usePhone(); } catch(e) { hookPhone = ''; }
-  try { apiObj = useApi(); } catch(e) { apiObj = null; }
+  try { customer = useCustomer(); } catch(e) { customer = null; }
+  try { order = useOrder(); } catch(e) { order = null; }
   try { editor = useExtensionEditor(); } catch(e) { editor = null; }
-
-  // orderConfirmation is always populated for all checkout types (email, phone, guest)
-  var orderConf = useSubscription(apiObj && apiObj.orderConfirmation ? apiObj.orderConfirmation : EMPTY_SUBSCRIBABLE);
-  // Extract numeric Shopify order ID from the GID
-  var orderId = orderConf && orderConf.order && orderConf.order.id
-    ? String(orderConf.order.id).split('/').pop() || ''
-    : '';
 
   const isEditor      = !!editor;
   const shopDomain    = shop ? shop.myshopifyDomain : '';
-  const customerEmail = hookEmail || '';
-  const customerPhone = hookPhone || '';
+  const shopifyOrderId = order && order.id ? String(order.id).split('/').pop() : '';
+  // useCustomer() requires full auth; fall back to order.email for guests viewing via order token
+  const customerEmail = (customer && customer.email ? customer.email : '') ||
+                        (order && order.email ? String(order.email) : '') ||
+                        (order && order.customer && order.customer.email ? String(order.customer.email) : '');
   const rewardText    = settings && settings.referral_reward_text ? settings.referral_reward_text : '15% Off Coupon';
   const template      = settings && settings.template ? String(settings.template).toLowerCase().trim() : 'banner';
   const tone          = settings && settings.banner_tone ? String(settings.banner_tone).toLowerCase().trim() : 'success';
@@ -48,45 +36,33 @@ function ReferralWidget() {
   const [wasSelfReferral, setWasSelfReferral] = useState(false);
 
   useEffect(function() {
-    // Bail only if we have absolutely no way to identify the customer
-    if (isEditor || !shopDomain || (!customerEmail && !customerPhone && !orderId)) { setReferralUrl(''); setWasSelfReferral(false); return; }
+    if (isEditor || !shopDomain || (!customerEmail && !shopifyOrderId)) { setReferralUrl(''); setWasSelfReferral(false); return; }
 
     var attempt = 0;
     var maxAttempts = RETRY_DELAYS.length + 1;
 
-    // Pass all available identifiers; backend uses email > phone > orderId
-    var baseUrl = SUPABASE_URL + '/functions/v1/get-loyalty-status?shop_domain=' + encodeURIComponent(shopDomain);
-    if (customerEmail) {
-      baseUrl += '&email=' + encodeURIComponent(customerEmail);
-    } else if (customerPhone) {
-      // Backend now does suffix-match to handle missing country-code prefix
-      baseUrl += '&phone=' + encodeURIComponent(customerPhone);
-    }
-    // Always include orderId when available — serves as fallback if phone
-    // format doesn't match; resolves once the points-earned webhook fires.
-    // It's also what lets the backend detect self-referral on THIS order.
-    if (orderId) baseUrl += '&shopify_order_id=' + encodeURIComponent(orderId);
-
     function tryFetch() {
       attempt++;
-      fetch(baseUrl, { headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY } })
-      .then(function(r) { return r.json(); }).then(function(data) {
+      // Always pass the order id (when available) — needed for self-referral detection
+      var fetchUrl = SUPABASE_URL + '/functions/v1/get-loyalty-status?shop_domain=' + encodeURIComponent(shopDomain) +
+        (customerEmail ? '&email=' + encodeURIComponent(customerEmail) : '') +
+        (shopifyOrderId ? '&shopify_order_id=' + encodeURIComponent(shopifyOrderId) : '');
+      fetch(
+        fetchUrl,
+        { headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY } }
+      ).then(function(r) { return r.json(); }).then(function(data) {
         if (data && data.referral_code) {
           setWasSelfReferral(!!(data && data.was_self_referral));
           setReferralUrl('https://' + shopDomain + '/?ref=' + encodeURIComponent(data.referral_code));
-        } else if (data && data.points_balance != null) {
-          // Member found but no referral code yet — stop polling
-          setWasSelfReferral(false);
-          setReferralUrl('');
         } else if (attempt < maxAttempts) {
-          setTimeout(tryFetch, RETRY_DELAYS[attempt - 1] || 1000);
+          setTimeout(tryFetch, RETRY_DELAYS[attempt - 1] || 5000);
         } else {
           setWasSelfReferral(false);
           setReferralUrl('');
         }
       }).catch(function() {
         if (attempt < maxAttempts) {
-          setTimeout(tryFetch, RETRY_DELAYS[attempt - 1] || 1000);
+          setTimeout(tryFetch, RETRY_DELAYS[attempt - 1] || 5000);
         } else {
           setWasSelfReferral(false);
           setReferralUrl('');
@@ -95,7 +71,7 @@ function ReferralWidget() {
     }
 
     tryFetch();
-  }, [customerEmail, customerPhone, shopDomain, orderId]);
+  }, [customerEmail, shopDomain, shopifyOrderId]);
 
   // ── Editor preview ──────────────────────────────────────────────────────────
   if (isEditor) {
@@ -115,9 +91,7 @@ function ReferralWidget() {
 
   // Member with referral code
   if (referralUrl) {
-    // Self-referral: the buyer used their own code on this order. Show honest
-    // copy and keep their code visible for future use, but suppress the share
-    // buttons (they'd be misleading after they just tried to use it on themselves).
+    // Self-referral: keep code visible, suppress share buttons, show honest copy.
     if (wasSelfReferral) {
       return (
         <Banner status='info' title='You used your own referral code'>
@@ -136,26 +110,8 @@ function ReferralWidget() {
     return renderReferral({ template, tone, btnStyle, alignment, rewardText, referralUrl, showUrl, showSocial });
   }
 
-  // Non-member
-  if (customerEmail) {
-    return (
-      <Banner status='info' title='Refer a Friend & Earn Rewards'>
-        <BlockStack spacing='tight'>
-          <Text>Join our loyalty programme to unlock your referral link and earn <Text emphasis='bold'>{rewardText}</Text> on every successful referral!</Text>
-        </BlockStack>
-      </Banner>
-    );
-  }
-
-  // Guest
-  return (
-    <Banner status='warning' title='Refer a Friend'>
-      <BlockStack spacing='tight'>
-        <Text>Sign in to view your referral link and earn <Text emphasis='bold'>{rewardText}</Text> on every successful referral.</Text>
-        {shopDomain ? <Text size='small'>{'Sign in at https://' + shopDomain + '/account/login'}</Text> : null}
-      </BlockStack>
-    </Banner>
-  );
+  // Non-member — render nothing on order-status/detail (keep it clean)
+  return null;
 }
 
 // ── Shared renderer — 3 templates ───────────────────────────────────────────
@@ -165,11 +121,11 @@ function renderReferral({ template, tone, btnStyle, alignment, rewardText, refer
   var validAlignment = ['start', 'center', 'end'].indexOf(alignment) !== -1 ? alignment : 'start';
   var waKind         = ['primary', 'secondary', 'plain'].indexOf(btnStyle) !== -1 ? btnStyle : 'primary';
 
-  var shareMsg   = encodeURIComponent('Shop and save! Use my referral link to get ' + rewardText + ': ' + referralUrl);
-  var waUrl      = 'https://wa.me/?text=' + shareMsg;
-  var tweetUrl   = 'https://twitter.com/intent/tweet?text=' + shareMsg;
-  var gmailUrl   = 'https://mail.google.com/mail/?view=cm&body=' + shareMsg;
-  var fbUrl      = 'https://www.facebook.com/sharer/sharer.php?u=' + encodeURIComponent(referralUrl);
+  var shareMsg = encodeURIComponent('Shop and save! Use my referral link to get ' + rewardText + ': ' + referralUrl);
+  var waUrl    = 'https://wa.me/?text=' + shareMsg;
+  var tweetUrl = 'https://twitter.com/intent/tweet?text=' + shareMsg;
+  var gmailUrl = 'https://mail.google.com/mail/?view=cm&body=' + shareMsg;
+  var fbUrl    = 'https://www.facebook.com/sharer/sharer.php?u=' + encodeURIComponent(referralUrl);
 
   // ── Banner: full card ──────────────────────────────────────────────────────
   if (validTemplate === 'banner') {
@@ -197,7 +153,7 @@ function renderReferral({ template, tone, btnStyle, alignment, rewardText, refer
     );
   }
 
-  // ── Compact: inline card — WhatsApp prominent ─────────────────────────────
+  // ── Compact: inline card ──────────────────────────────────────────────────
   if (validTemplate === 'compact') {
     return (
       <Banner status={validTone} title='Refer & Earn'>
@@ -221,7 +177,7 @@ function renderReferral({ template, tone, btnStyle, alignment, rewardText, refer
     );
   }
 
-  // ── Minimal: no card, divider-separated ───────────────────────────────────
+  // ── Minimal: no card ──────────────────────────────────────────────────────
   return (
     <BlockStack spacing='tight' inlineAlignment={validAlignment}>
       <Divider />
