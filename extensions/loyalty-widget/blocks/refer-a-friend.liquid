@@ -192,8 +192,8 @@
 <script>
 (function() {
   const blockId = '{{ block.id }}';
-  const API_URL = 'https://lizgppzyyljqbmzdytia.supabase.co/functions/v1';
-  const ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxpemdwcHp5eWxqcWJtemR5dGlhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQ0MDE0MDYsImV4cCI6MjA3OTk3NzQwNn0.E5yJHY4mjOvLiqZCfCp9vnNC7xsRAlBSdW55YE2RPC0';
+  const API_URL = 'https://jblqyvicxhmqqjhostcj.supabase.co/functions/v1';
+  const ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpibHF5dmljeGhtcXFqaG9zdGNqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcxOTU1MTAsImV4cCI6MjA5Mjc3MTUxMH0.pMOn3TKgzp_QqJgOlMzwO7ZRRex-mifWUzhJPwxUndE';
 
   async function loadReferralLink() {
     const errEl2 = document.getElementById('rh-ref-error-' + blockId);
@@ -209,7 +209,7 @@
       const res = await fetch(
         `${API_URL}/get-loyalty-status?email=${encodeURIComponent(email)}&shop_domain=${encodeURIComponent(shop)}`,
         {
-          headers: { 'Authorization': `Bearer ${ANON_KEY}` },
+          headers: { apikey: ANON_KEY, Authorization: `Bearer ${ANON_KEY}` },
           signal: controller.signal
         }
       );
