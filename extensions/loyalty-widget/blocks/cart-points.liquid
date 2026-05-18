@@ -21,14 +21,14 @@
     <div class="rh-cp-content">
       <span class="rh-cp-label">{{ block.settings.label_text }}</span>
       <strong class="rh-cp-points" id="rh-cp-pts-{{ block.id }}">…</strong>
-      <span class="rh-cp-name" id="rh-cp-name-{{ block.id }}">{{ block.settings.points_name }}</span>
+      <span class="rh-cp-name" id="rh-cp-name-{{ block.id }}">Points</span>
     </div>
 
     {% if block.settings.show_balance %}
     <div class="rh-cp-balance" id="rh-cp-bal-wrap-{{ block.id }}" style="display:none">
       <span class="rh-cp-bal-label">Balance: </span>
       <strong id="rh-cp-bal-{{ block.id }}">0</strong>
-      <span id="rh-cp-bal-name-{{ block.id }}">{{ block.settings.points_name }}</span>
+      <span id="rh-cp-bal-name-{{ block.id }}">Points</span>
     </div>
     {% endif %}
 
@@ -357,7 +357,7 @@
                 : (data.default_earn_rate    != null ? data.default_earn_rate    : 1);
     var divisor = (data.tier && data.tier.points_earn_divisor != null) ? data.tier.points_earn_divisor
                 : (data.default_earn_divisor != null ? data.default_earn_divisor : 1);
-    var name    = (data.program && data.program.points_name) ? data.program.points_name : '{{ block.settings.points_name }}';
+    var name    = (data.program && data.program.points_name) ? data.program.points_name : 'Points';
     var earned  = divisor > 0 ? Math.floor((cartTotal / divisor) * rate) : 0;
 
     var ptsEl  = document.getElementById('rh-cp-pts-'  + blockId);
@@ -434,13 +434,6 @@
         { "value": "pill",    "label": "Pill — compact badge, floats inline" }
       ],
       "default": "card"
-    },
-    {
-      "type": "text",
-      "id": "points_name",
-      "label": "Points Name",
-      "info": "Shown while the earn rate loads. Overridden by your GoSelf program name.",
-      "default": "Points"
     },
     {
       "type": "text",

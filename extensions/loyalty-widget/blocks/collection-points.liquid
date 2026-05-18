@@ -20,7 +20,7 @@
 
     <div class="rh-colp-content">
       <span class="rh-colp-label" id="rh-colp-label-{{ block.id }}">{{ block.settings.label_text }}</span>
-      <strong class="rh-colp-rate" id="rh-colp-rate-{{ block.id }}">{{ block.settings.points_name }}</strong>
+      <strong class="rh-colp-rate" id="rh-colp-rate-{{ block.id }}">Points</strong>
     </div>
 
     {% if block.settings.show_tier_badge %}
@@ -31,7 +31,7 @@
     <div class="rh-colp-balance" id="rh-colp-bal-wrap-{{ block.id }}" style="display:none">
       <span class="rh-colp-bal-label">Balance: </span>
       <strong id="rh-colp-bal-{{ block.id }}">0</strong>
-      <span id="rh-colp-bal-name-{{ block.id }}">{{ block.settings.points_name }}</span>
+      <span id="rh-colp-bal-name-{{ block.id }}">Points</span>
     </div>
     {% endif %}
 
@@ -332,7 +332,7 @@
   var shopDomain    = {{ shop.permanent_domain | json }};
   var customerEmail = {{ customer.email | json }};
   var injectBadges  = {{ block.settings.inject_product_badges }};
-  var fallbackName  = '{{ block.settings.points_name }}';
+  var fallbackName  = 'Points';
 
   // ── Tooltip toggle ──────────────────────────────────────────────────────
   var infoWrap = document.getElementById('rh-colp-info-' + blockId);
@@ -447,13 +447,6 @@
       "id": "label_text",
       "label": "Label Text",
       "default": "Shop & earn"
-    },
-    {
-      "type": "text",
-      "id": "points_name",
-      "label": "Points Name",
-      "info": "Shown while the earn rate loads. Overridden by your GoSelf program name.",
-      "default": "Points"
     },
     {
       "type": "header",

@@ -19,7 +19,7 @@
     <div class="rh-pp-content">
       <span class="rh-pp-label">{{ block.settings.label_text }}</span>
       <strong class="rh-pp-points" id="rh-pp-pts-{{ block.id }}">…</strong>
-      <span class="rh-pp-name" id="rh-pp-name-{{ block.id }}">{{ block.settings.points_name }}</span>
+      <span class="rh-pp-name" id="rh-pp-name-{{ block.id }}">Points</span>
     </div>
 
     {% if block.settings.show_tier_badge %}
@@ -30,7 +30,7 @@
     <div class="rh-pp-balance" id="rh-pp-bal-wrap-{{ block.id }}" style="display:none">
       <span class="rh-pp-bal-label">Balance: </span>
       <strong id="rh-pp-bal-{{ block.id }}">0</strong>
-      <span id="rh-pp-bal-name-{{ block.id }}">{{ block.settings.points_name }}</span>
+      <span id="rh-pp-bal-name-{{ block.id }}">Points</span>
     </div>
     {% endif %}
 
@@ -327,7 +327,7 @@
                 : (data.default_earn_rate    != null ? data.default_earn_rate    : 1);
     var divisor = (data.tier && data.tier.points_earn_divisor != null) ? data.tier.points_earn_divisor
                 : (data.default_earn_divisor != null ? data.default_earn_divisor : 1);
-    var name    = (data.program && data.program.points_name) ? data.program.points_name : '{{ block.settings.points_name }}';
+    var name    = (data.program && data.program.points_name) ? data.program.points_name : 'Points';
     var earned  = divisor > 0 ? Math.ceil((productPrice / divisor) * rate) : 0;
 
     var ptsEl  = document.getElementById('rh-pp-pts-'  + blockId);
@@ -379,13 +379,6 @@
         { "value": "pill",    "label": "Pill — compact badge, floats inline" }
       ],
       "default": "card"
-    },
-    {
-      "type": "text",
-      "id": "points_name",
-      "label": "Points Name",
-      "info": "Shown while the earn rate loads. Overridden by your GoSelf program name.",
-      "default": "Points"
     },
     {
       "type": "text",
