@@ -38,6 +38,32 @@
     <a href="/account/login" class="rh-colp-signin">Sign in to earn</a>
     {% endif %}
 
+    {% if block.settings.show_info_tooltip %}
+    <div class="rh-colp-info-wrap" id="rh-colp-info-{{ block.id }}">
+      <button class="rh-colp-info-btn" aria-label="Points info" type="button">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+        </svg>
+      </button>
+      <div class="rh-colp-tooltip" role="tooltip">
+        <ul class="rh-colp-tooltip-list">
+          {% unless block.settings.tooltip_line_1 == blank %}
+          <li>{{ block.settings.tooltip_line_1 }}</li>
+          {% endunless %}
+          {% unless block.settings.tooltip_line_2 == blank %}
+          <li>{{ block.settings.tooltip_line_2 }}</li>
+          {% endunless %}
+          {% unless block.settings.tooltip_line_3 == blank %}
+          <li>{{ block.settings.tooltip_line_3 }}</li>
+          {% endunless %}
+        </ul>
+        {% if block.settings.tooltip_link_url != blank and block.settings.tooltip_link_text != blank %}
+        <a href="{{ block.settings.tooltip_link_url }}" class="rh-colp-tooltip-link" target="_blank" rel="noopener">{{ block.settings.tooltip_link_text }}</a>
+        {% endif %}
+      </div>
+    </div>
+    {% endif %}
+
   </div>
 </div>
 
@@ -116,7 +142,90 @@
     margin-top: 4px;
     white-space: nowrap;
   }
+  /* ── Info tooltip ─────────────────────────────────────────────────────── */
+  #rh-col-points-{{ block.id }} .rh-colp-info-wrap {
+    position: relative;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+  }
+  #rh-col-points-{{ block.id }} .rh-colp-info-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 2px;
+    color: {{ block.settings.accent_color }};
+    opacity: 0.75;
+    line-height: 1;
+  }
+  #rh-col-points-{{ block.id }} .rh-colp-info-btn:hover { opacity: 1; }
+  #rh-col-points-{{ block.id }} .rh-colp-tooltip {
+    display: none;
+    position: absolute;
+    right: 0;
+    top: calc(100% + 8px);
+    min-width: 240px;
+    max-width: 300px;
+    background: #fff;
+    border: 1px solid {{ block.settings.accent_color }}33;
+    border-radius: 8px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+    padding: 12px 14px;
+    z-index: 9999;
+    font-size: 13px;
+    color: #333;
+    text-align: left;
+  }
+  #rh-col-points-{{ block.id }} .rh-colp-tooltip::before {
+    content: '';
+    position: absolute;
+    top: -6px;
+    right: 6px;
+    width: 10px;
+    height: 10px;
+    background: #fff;
+    border-left: 1px solid {{ block.settings.accent_color }}33;
+    border-top: 1px solid {{ block.settings.accent_color }}33;
+    transform: rotate(45deg);
+  }
+  #rh-col-points-{{ block.id }} .rh-colp-info-wrap:hover .rh-colp-tooltip,
+  #rh-col-points-{{ block.id }} .rh-colp-info-wrap.rh-active .rh-colp-tooltip {
+    display: block;
+  }
+  #rh-col-points-{{ block.id }} .rh-colp-tooltip-list {
+    margin: 0 0 6px 0;
+    padding: 0 0 0 16px;
+    list-style: disc;
+  }
+  #rh-col-points-{{ block.id }} .rh-colp-tooltip-list li {
+    margin-bottom: 4px;
+    line-height: 1.4;
+  }
+  #rh-col-points-{{ block.id }} .rh-colp-tooltip-link {
+    display: inline-block;
+    margin-top: 4px;
+    font-size: 12px;
+    color: {{ block.settings.accent_color }};
+    text-decoration: underline;
+  }
 </style>
+
+<script>
+(function() {
+  var wrap = document.getElementById('rh-colp-info-{{ block.id }}');
+  if (!wrap) return;
+  wrap.addEventListener('click', function(e) {
+    e.stopPropagation();
+    wrap.classList.toggle('rh-active');
+  });
+  document.addEventListener('click', function() {
+    wrap.classList.remove('rh-active');
+  });
+})();
+</script>
 
 {% if customer %}
 <script>
@@ -293,6 +402,45 @@
       "id": "show_signin_nudge",
       "label": "Show 'Sign in to earn' link for guests",
       "default": true
+    },
+    {
+      "type": "header",
+      "content": "Info Tooltip"
+    },
+    {
+      "type": "checkbox",
+      "id": "show_info_tooltip",
+      "label": "Show ℹ info icon with tooltip",
+      "default": true
+    },
+    {
+      "type": "text",
+      "id": "tooltip_line_1",
+      "label": "Tooltip line 1",
+      "default": "Points will be rewarded once your order is delivered"
+    },
+    {
+      "type": "text",
+      "id": "tooltip_line_2",
+      "label": "Tooltip line 2",
+      "default": "You will get bonus points based on the tier you are on"
+    },
+    {
+      "type": "text",
+      "id": "tooltip_line_3",
+      "label": "Tooltip line 3 (optional)",
+      "default": ""
+    },
+    {
+      "type": "text",
+      "id": "tooltip_link_text",
+      "label": "Tooltip link label (optional)",
+      "default": "Learn more about our rewards"
+    },
+    {
+      "type": "url",
+      "id": "tooltip_link_url",
+      "label": "Tooltip link URL (optional)"
     },
     {
       "type": "header",
