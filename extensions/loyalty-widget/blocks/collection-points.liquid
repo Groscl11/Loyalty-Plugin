@@ -1,8 +1,9 @@
 {% comment %}
   Collection Page Points Banner
   Shows a site-wide "Earn points on every purchase" nudge on collection pages.
-  For logged-in members it fetches their personalised tier rate and injects
-  per-product badges directly onto the product cards in the collection grid.
+  Earn rate always comes from the GoSelf program config — guests see the program
+  default rate, logged-in members see their personalised tier rate.
+  Also injects per-product badges into the collection grid for all visitors.
   Add this block to any collection template in the Theme Editor → Apps → Add block.
 {% endcomment %}
 
@@ -17,9 +18,7 @@
 
     <div class="rh-colp-content">
       <span class="rh-colp-label" id="rh-colp-label-{{ block.id }}">{{ block.settings.label_text }}</span>
-      <strong class="rh-colp-rate" id="rh-colp-rate-{{ block.id }}">
-        {{ block.settings.points_rate }} {{ block.settings.points_name }} per ₹{{ block.settings.points_divisor }}
-      </strong>
+      <strong class="rh-colp-rate" id="rh-colp-rate-{{ block.id }}">{{ block.settings.points_name }}</strong>
     </div>
 
     {% if block.settings.show_tier_badge %}
@@ -126,7 +125,6 @@
     white-space: nowrap;
     flex-shrink: 0;
   }
-
   /* Per-product badge injected by JS into collection grid cards */
   .rh-prod-badge {
     display: inline-flex;
@@ -215,84 +213,74 @@
 
 <script>
 (function() {
-  var wrap = document.getElementById('rh-colp-info-{{ block.id }}');
-  if (!wrap) return;
-  wrap.addEventListener('click', function(e) {
-    e.stopPropagation();
-    wrap.classList.toggle('rh-active');
-  });
-  document.addEventListener('click', function() {
-    wrap.classList.remove('rh-active');
-  });
-})();
-</script>
-
-{% if customer %}
-<script>
-(function() {
-  var SUPABASE_URL = 'https://jblqyvicxhmqqjhostcj.supabase.co';
-  var ANON_KEY     = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpibHF5dmljeGhtcXFqaG9zdGNqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcxOTU1MTAsImV4cCI6MjA5Mjc3MTUxMH0.pMOn3TKgzp_QqJgOlMzwO7ZRRex-mifWUzhJPwxUndE';
+  var SUPABASE_URL  = 'https://jblqyvicxhmqqjhostcj.supabase.co';
+  var ANON_KEY      = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpibHF5dmljeGhtcXFqaG9zdGNqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcxOTU1MTAsImV4cCI6MjA5Mjc3MTUxMH0.pMOn3TKgzp_QqJgOlMzwO7ZRRex-mifWUzhJPwxUndE';
   var blockId       = '{{ block.id }}';
   var shopDomain    = {{ shop.permanent_domain | json }};
   var customerEmail = {{ customer.email | json }};
   var injectBadges  = {{ block.settings.inject_product_badges }};
-  var pointsName    = '{{ block.settings.points_name }}';
-  var divisor       = {{ block.settings.points_divisor }};
-  var rate          = {{ block.settings.points_rate }};
+  var fallbackName  = '{{ block.settings.points_name }}';
 
-  if (!customerEmail) return;
+  // ── Tooltip toggle ──────────────────────────────────────────────────────
+  var infoWrap = document.getElementById('rh-colp-info-' + blockId);
+  if (infoWrap) {
+    infoWrap.addEventListener('click', function(e) {
+      e.stopPropagation();
+      infoWrap.classList.toggle('rh-active');
+    });
+    document.addEventListener('click', function() {
+      infoWrap.classList.remove('rh-active');
+    });
+  }
 
-  fetch(
-    SUPABASE_URL + '/functions/v1/get-loyalty-status?shop_domain=' + encodeURIComponent(shopDomain) + '&email=' + encodeURIComponent(customerEmail),
-    { headers: { apikey: ANON_KEY, Authorization: 'Bearer ' + ANON_KEY } }
-  )
+  // ── Earn rate fetch — guests get program default, members get tier rate ──
+  if (!shopDomain) return;
+  var url = SUPABASE_URL + '/functions/v1/get-loyalty-status?shop_domain=' + encodeURIComponent(shopDomain);
+  if (customerEmail) url += '&email=' + encodeURIComponent(customerEmail);
+
+  fetch(url, { headers: { apikey: ANON_KEY, Authorization: 'Bearer ' + ANON_KEY } })
   .then(function(r) { return r.json(); })
   .then(function(data) {
-    if (!data || data.error || data.points_balance == null) return;
+    if (!data || data.error) return;
 
-    rate    = (data.tier && data.tier.points_earn_rate    != null) ? data.tier.points_earn_rate    : rate;
-    divisor = (data.tier && data.tier.points_earn_divisor != null) ? data.tier.points_earn_divisor : divisor;
-    var name    = (data.program && data.program.points_name) ? data.program.points_name : pointsName;
-    var balance = data.points_balance || 0;
+    var rate    = (data.tier && data.tier.points_earn_rate    != null) ? data.tier.points_earn_rate
+                : (data.default_earn_rate    != null ? data.default_earn_rate    : 1);
+    var divisor = (data.tier && data.tier.points_earn_divisor != null) ? data.tier.points_earn_divisor
+                : (data.default_earn_divisor != null ? data.default_earn_divisor : 1);
+    var name    = (data.program && data.program.points_name) ? data.program.points_name : fallbackName;
     var tierName = data.tier && data.tier.name ? data.tier.name : '';
+    var balance  = data.points_balance || 0;
 
     // Update banner rate text
     var rateEl = document.getElementById('rh-colp-rate-' + blockId);
     if (rateEl) rateEl.textContent = rate + ' ' + name + ' per ₹' + divisor;
 
-    // Show tier badge
-    {% if block.settings.show_tier_badge %}
-    if (tierName) {
-      var tierEl = document.getElementById('rh-colp-tier-' + blockId);
-      if (tierEl) {
-        tierEl.textContent = tierName;
-        tierEl.style.display = '';
+    if (!data.guest) {
+      {% if block.settings.show_tier_badge %}
+      if (tierName) {
+        var tierEl = document.getElementById('rh-colp-tier-' + blockId);
+        if (tierEl) { tierEl.textContent = tierName; tierEl.style.display = ''; }
       }
-    }
-    {% endif %}
+      {% endif %}
 
-    // Show balance
-    {% if block.settings.show_balance %}
-    var balWrap = document.getElementById('rh-colp-bal-wrap-' + blockId);
-    var balEl   = document.getElementById('rh-colp-bal-' + blockId);
-    var balName = document.getElementById('rh-colp-bal-name-' + blockId);
-    if (balWrap && balEl) {
-      balEl.textContent = balance.toLocaleString();
-      if (balName) balName.textContent = name;
-      balWrap.style.display = '';
+      {% if block.settings.show_balance %}
+      var balWrap = document.getElementById('rh-colp-bal-wrap-' + blockId);
+      var balEl   = document.getElementById('rh-colp-bal-'      + blockId);
+      var balName = document.getElementById('rh-colp-bal-name-' + blockId);
+      if (balWrap && balEl) {
+        balEl.textContent = balance.toLocaleString();
+        if (balName) balName.textContent = name;
+        balWrap.style.display = '';
+      }
+      {% endif %}
     }
-    {% endif %}
 
-    // Inject per-product badges into collection grid
-    if (injectBadges) {
-      injectProductBadges(rate, divisor, name);
-    }
+    // Inject per-product badges for all visitors (guests see default rate)
+    if (injectBadges) injectProductBadges(rate, divisor, name);
   })
   .catch(function() {});
 
   function injectProductBadges(earnRate, earnDivisor, name) {
-    // Common Shopify theme selectors for product price elements
-    // Works with Dawn, Debut, Sense, Refresh, and most custom themes
     var priceSelectors = [
       '.product-item__price .price__regular .price-item--regular',
       '.price__regular .price-item--regular',
@@ -301,28 +289,19 @@
       '.product-item__price',
       '.card__information .price',
     ];
-
-    // Try each selector until we find product cards
     var priceElements = [];
     for (var i = 0; i < priceSelectors.length; i++) {
       priceElements = document.querySelectorAll(priceSelectors[i]);
       if (priceElements.length > 0) break;
     }
-
     if (priceElements.length === 0) return;
-
     priceElements.forEach(function(el) {
-      // Skip if badge already injected
       if (el.parentNode && el.parentNode.querySelector('.rh-prod-badge')) return;
-
-      // Parse price from element text (handles ₹, $, commas)
       var priceText = el.textContent.replace(/[^\d.]/g, '').trim();
       var price = parseFloat(priceText);
       if (!price || isNaN(price)) return;
-
       var pts = earnDivisor > 0 ? Math.floor((price / earnDivisor) * earnRate) : 0;
       if (pts <= 0) return;
-
       var badge = document.createElement('span');
       badge.className = 'rh-prod-badge';
       badge.innerHTML = '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg> ' + pts + ' ' + name;
@@ -331,7 +310,6 @@
   }
 })();
 </script>
-{% endif %}
 
 {% schema %}
 {
@@ -339,39 +317,16 @@
   "target": "section",
   "settings": [
     {
-      "type": "header",
-      "content": "Points Display"
-    },
-    {
       "type": "text",
       "id": "label_text",
       "label": "Label Text",
       "default": "Shop & earn"
     },
     {
-      "type": "range",
-      "id": "points_rate",
-      "label": "Points earned per unit",
-      "info": "Fallback for guests. Logged-in member rate comes from their tier.",
-      "min": 1,
-      "max": 100,
-      "step": 1,
-      "default": 1
-    },
-    {
-      "type": "range",
-      "id": "points_divisor",
-      "label": "Per ₹ (divisor)",
-      "info": "e.g. divisor=100 → earn 1 point per ₹100 spent",
-      "min": 5,
-      "max": 500,
-      "step": 5,
-      "default": 100
-    },
-    {
       "type": "text",
       "id": "points_name",
       "label": "Points Name",
+      "info": "Shown while the earn rate loads. Overridden by your GoSelf program name.",
       "default": "Points"
     },
     {
@@ -394,7 +349,7 @@
       "type": "checkbox",
       "id": "inject_product_badges",
       "label": "Inject points badges on product cards",
-      "info": "Adds 'X Points' badge below prices in the collection grid for logged-in members.",
+      "info": "Adds 'X Points' badge below prices in the collection grid.",
       "default": true
     },
     {

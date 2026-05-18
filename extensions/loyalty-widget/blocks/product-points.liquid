@@ -1,13 +1,11 @@
 {% comment %}
   Product Page Points Banner
   Shows how many points a customer earns for buying this product.
-  For logged-in members: fetches their tier earn rate + balance from the GoSelf
-  loyalty API and shows personalised points + tier badge.
+  Earn rate always comes from the GoSelf program config — no duplicate
+  Theme Editor configuration needed. Guests see the default tier rate;
+  logged-in members see their personalised tier rate + balance.
   Add this block to any product template in the Theme Editor → Apps → Add block.
 {% endcomment %}
-
-{% assign product_price  = product.price | divided_by: 100.0 %}
-{% assign pts_estimate   = product_price | divided_by: block.settings.points_divisor | times: block.settings.points_rate | ceil %}
 
 <div class="rh-product-points" id="rh-product-points-{{ block.id }}" {{ block.shopify_attributes }}>
   <div class="rh-pp-inner">
@@ -20,7 +18,7 @@
 
     <div class="rh-pp-content">
       <span class="rh-pp-label">{{ block.settings.label_text }}</span>
-      <strong class="rh-pp-points" id="rh-pp-pts-{{ block.id }}">{{ pts_estimate }}</strong>
+      <strong class="rh-pp-points" id="rh-pp-pts-{{ block.id }}">…</strong>
       <span class="rh-pp-name" id="rh-pp-name-{{ block.id }}">{{ block.settings.points_name }}</span>
     </div>
 
@@ -206,21 +204,6 @@
 
 <script>
 (function() {
-  var wrap = document.getElementById('rh-pp-info-{{ block.id }}');
-  if (!wrap) return;
-  wrap.addEventListener('click', function(e) {
-    e.stopPropagation();
-    wrap.classList.toggle('rh-active');
-  });
-  document.addEventListener('click', function() {
-    wrap.classList.remove('rh-active');
-  });
-})();
-</script>
-
-{% if customer %}
-<script>
-(function() {
   var SUPABASE_URL  = 'https://jblqyvicxhmqqjhostcj.supabase.co';
   var ANON_KEY      = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpibHF5dmljeGhtcXFqaG9zdGNqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcxOTU1MTAsImV4cCI6MjA5Mjc3MTUxMH0.pMOn3TKgzp_QqJgOlMzwO7ZRRex-mifWUzhJPwxUndE';
   var blockId       = '{{ block.id }}';
@@ -228,41 +211,53 @@
   var customerEmail = {{ customer.email | json }};
   var productPrice  = {{ product.price | divided_by: 100.0 }};
 
-  if (!customerEmail) return;
+  // ── Tooltip toggle (desktop hover + mobile tap) ──────────────────────────
+  var infoWrap = document.getElementById('rh-pp-info-' + blockId);
+  if (infoWrap) {
+    infoWrap.addEventListener('click', function(e) {
+      e.stopPropagation();
+      infoWrap.classList.toggle('rh-active');
+    });
+    document.addEventListener('click', function() {
+      infoWrap.classList.remove('rh-active');
+    });
+  }
 
-  fetch(
-    SUPABASE_URL + '/functions/v1/get-loyalty-status?shop_domain=' + encodeURIComponent(shopDomain) + '&email=' + encodeURIComponent(customerEmail),
-    { headers: { apikey: ANON_KEY, Authorization: 'Bearer ' + ANON_KEY } }
-  )
+  // ── Earn rate fetch — guests get program default, members get tier rate ──
+  if (!shopDomain) return;
+  var url = SUPABASE_URL + '/functions/v1/get-loyalty-status?shop_domain=' + encodeURIComponent(shopDomain);
+  if (customerEmail) url += '&email=' + encodeURIComponent(customerEmail);
+
+  fetch(url, { headers: { apikey: ANON_KEY, Authorization: 'Bearer ' + ANON_KEY } })
   .then(function(r) { return r.json(); })
   .then(function(data) {
-    if (!data || data.error || data.points_balance == null) return;
+    if (!data || data.error) return;
 
-    var rate     = (data.tier && data.tier.points_earn_rate    != null) ? data.tier.points_earn_rate    : 1;
-    var divisor  = (data.tier && data.tier.points_earn_divisor != null) ? data.tier.points_earn_divisor : 1;
-    var name     = (data.program && data.program.points_name)  ? data.program.points_name : '{{ block.settings.points_name }}';
-    var tierName = data.tier && data.tier.name ? data.tier.name : '';
-    var earned   = divisor > 0 ? Math.ceil((productPrice / divisor) * rate) : 0;
-    var balance  = data.points_balance || 0;
+    // Rate priority: member tier > guest program default > 1
+    var rate    = (data.tier && data.tier.points_earn_rate    != null) ? data.tier.points_earn_rate
+                : (data.default_earn_rate    != null ? data.default_earn_rate    : 1);
+    var divisor = (data.tier && data.tier.points_earn_divisor != null) ? data.tier.points_earn_divisor
+                : (data.default_earn_divisor != null ? data.default_earn_divisor : 1);
+    var name    = (data.program && data.program.points_name) ? data.program.points_name : '{{ block.settings.points_name }}';
+    var earned  = divisor > 0 ? Math.ceil((productPrice / divisor) * rate) : 0;
 
-    // Update points count and name
     var ptsEl  = document.getElementById('rh-pp-pts-'  + blockId);
     var nameEl = document.getElementById('rh-pp-name-' + blockId);
     if (ptsEl)  ptsEl.textContent  = earned;
     if (nameEl) nameEl.textContent = name;
 
-    // Show tier badge
+    if (data.guest) return; // guests: points shown, no balance/tier badge
+
+    var balance  = data.points_balance || 0;
+    var tierName = data.tier && data.tier.name ? data.tier.name : '';
+
     {% if block.settings.show_tier_badge %}
     if (tierName) {
       var tierEl = document.getElementById('rh-pp-tier-' + blockId);
-      if (tierEl) {
-        tierEl.textContent    = tierName;
-        tierEl.style.display  = '';
-      }
+      if (tierEl) { tierEl.textContent = tierName; tierEl.style.display = ''; }
     }
     {% endif %}
 
-    // Show balance
     {% if block.settings.show_balance %}
     var balWrap = document.getElementById('rh-pp-bal-wrap-' + blockId);
     var balEl   = document.getElementById('rh-pp-bal-'      + blockId);
@@ -277,7 +272,6 @@
   .catch(function() {});
 })();
 </script>
-{% endif %}
 
 {% schema %}
 {
@@ -285,33 +279,10 @@
   "target": "section",
   "settings": [
     {
-      "type": "header",
-      "content": "Points Calculation"
-    },
-    {
-      "type": "range",
-      "id": "points_rate",
-      "label": "Points earned per unit",
-      "info": "Fallback for guests. Logged-in member rate comes from their tier.",
-      "min": 1,
-      "max": 100,
-      "step": 1,
-      "default": 1
-    },
-    {
-      "type": "range",
-      "id": "points_divisor",
-      "label": "Per ₹ (divisor)",
-      "info": "e.g. divisor=100 → earn 1 point per ₹100 spent",
-      "min": 5,
-      "max": 500,
-      "step": 5,
-      "default": 100
-    },
-    {
       "type": "text",
       "id": "points_name",
       "label": "Points Name",
+      "info": "Shown while the earn rate loads. Overridden by your GoSelf program name.",
       "default": "Points"
     },
     {
