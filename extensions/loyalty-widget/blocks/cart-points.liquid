@@ -216,23 +216,21 @@
     padding: 10px 20px;
     color: #fff;
   }
-  #rh-cart-points-{{ block.id }}.rh-cpt--strip .rh-cp-label,
+  /* Strip: base elements use accent_color — override them so they show against the accent bg */
   #rh-cart-points-{{ block.id }}.rh-cpt--strip .rh-cp-points,
   #rh-cart-points-{{ block.id }}.rh-cpt--strip .rh-cp-name,
   #rh-cart-points-{{ block.id }}.rh-cpt--strip .rh-cp-icon,
-  #rh-cart-points-{{ block.id }}.rh-cpt--strip .rh-cp-balance,
-  #rh-cart-points-{{ block.id }}.rh-cpt--strip .rh-cp-progress-label,
-  #rh-cart-points-{{ block.id }}.rh-cpt--strip .rh-cp-info-btn { color: #fff; }
+  #rh-cart-points-{{ block.id }}.rh-cpt--strip .rh-cp-info-btn { color: {{ block.settings.text_color }}; }
   #rh-cart-points-{{ block.id }}.rh-cpt--strip .rh-cp-progress-track {
-    background: rgba(255,255,255,0.3);
+    background: {{ block.settings.text_color }}30;
   }
   #rh-cart-points-{{ block.id }}.rh-cpt--strip .rh-cp-progress-fill {
-    background: #fff;
+    background: {{ block.settings.text_color }};
   }
-  #rh-cart-points-{{ block.id }}.rh-cpt--strip .rh-cp-signin--link { color: #fff; opacity: 0.9; text-decoration: underline; }
-  #rh-cart-points-{{ block.id }}.rh-cpt--strip .rh-cp-signin--button { color: #fff; border-color: rgba(255,255,255,0.6); background: transparent; }
-  #rh-cart-points-{{ block.id }}.rh-cpt--strip .rh-cp-signin--button:hover { background: rgba(255,255,255,0.15); }
-  #rh-cart-points-{{ block.id }}.rh-cpt--strip .rh-cp-signin--badge { color: {{ block.settings.accent_color }}; background: #fff; }
+  #rh-cart-points-{{ block.id }}.rh-cpt--strip .rh-cp-signin--link { color: {{ block.settings.text_color }}; opacity: 0.9; text-decoration: underline; }
+  #rh-cart-points-{{ block.id }}.rh-cpt--strip .rh-cp-signin--button { color: {{ block.settings.text_color }}; border-color: {{ block.settings.text_color }}80; background: transparent; }
+  #rh-cart-points-{{ block.id }}.rh-cpt--strip .rh-cp-signin--button:hover { background: {{ block.settings.text_color }}15; }
+  #rh-cart-points-{{ block.id }}.rh-cpt--strip .rh-cp-signin--badge { color: {{ block.settings.accent_color }}; background: {{ block.settings.text_color }}; }
 
   /* ── Template: pill ────────────────────────────────────────────────────── */
   #rh-cart-points-{{ block.id }}.rh-cpt--pill {
@@ -570,7 +568,7 @@
       "type": "color",
       "id": "text_color",
       "label": "Text Color",
-      "info": "Strip template always uses white text.",
+      "info": "For Strip, use a colour that reads well against your Accent Color — typically white (#ffffff).",
       "default": "#1E3A5F"
     },
     {

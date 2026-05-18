@@ -194,18 +194,16 @@
     border-radius: 0;
     padding: 10px 16px;
   }
-  #rh-product-points-{{ block.id }}.rh-ppt--strip,
-  #rh-product-points-{{ block.id }}.rh-ppt--strip .rh-pp-label,
+  /* Strip: base elements use primary_color — override them so they show against the accent bg */
   #rh-product-points-{{ block.id }}.rh-ppt--strip .rh-pp-points,
   #rh-product-points-{{ block.id }}.rh-ppt--strip .rh-pp-name,
   #rh-product-points-{{ block.id }}.rh-ppt--strip .rh-pp-icon,
-  #rh-product-points-{{ block.id }}.rh-ppt--strip .rh-pp-balance,
-  #rh-product-points-{{ block.id }}.rh-ppt--strip .rh-pp-info-btn { color: #fff; }
-  #rh-product-points-{{ block.id }}.rh-ppt--strip .rh-pp-tier { background: rgba(255,255,255,0.25); color: #fff; }
-  #rh-product-points-{{ block.id }}.rh-ppt--strip .rh-pp-signin--link { color: #fff; opacity: 0.9; text-decoration: underline; }
-  #rh-product-points-{{ block.id }}.rh-ppt--strip .rh-pp-signin--button { color: #fff; border-color: rgba(255,255,255,0.6); background: transparent; }
-  #rh-product-points-{{ block.id }}.rh-ppt--strip .rh-pp-signin--button:hover { background: rgba(255,255,255,0.15); }
-  #rh-product-points-{{ block.id }}.rh-ppt--strip .rh-pp-signin--badge { color: {{ block.settings.primary_color }}; background: #fff; }
+  #rh-product-points-{{ block.id }}.rh-ppt--strip .rh-pp-info-btn { color: {{ block.settings.text_color }}; }
+  #rh-product-points-{{ block.id }}.rh-ppt--strip .rh-pp-tier { background: {{ block.settings.text_color }}30; color: {{ block.settings.text_color }}; }
+  #rh-product-points-{{ block.id }}.rh-ppt--strip .rh-pp-signin--link { color: {{ block.settings.text_color }}; opacity: 0.9; text-decoration: underline; }
+  #rh-product-points-{{ block.id }}.rh-ppt--strip .rh-pp-signin--button { color: {{ block.settings.text_color }}; border-color: {{ block.settings.text_color }}80; background: transparent; }
+  #rh-product-points-{{ block.id }}.rh-ppt--strip .rh-pp-signin--button:hover { background: {{ block.settings.text_color }}15; }
+  #rh-product-points-{{ block.id }}.rh-ppt--strip .rh-pp-signin--badge { color: {{ block.settings.primary_color }}; background: {{ block.settings.text_color }}; }
 
   /* ── Template: pill ────────────────────────────────────────────────────── */
   #rh-product-points-{{ block.id }}.rh-ppt--pill {
@@ -515,7 +513,7 @@
       "type": "color",
       "id": "text_color",
       "label": "Text Color",
-      "info": "Strip template always uses white text.",
+      "info": "For Strip, use a colour that reads well against your Accent Color — typically white (#ffffff).",
       "default": "#1E3A5F"
     },
     {

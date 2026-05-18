@@ -210,34 +210,32 @@
     border-radius: 0;
     padding: 10px 20px;
   }
-  #rh-col-points-{{ block.id }}.rh-colp-tmpl--strip,
-  #rh-col-points-{{ block.id }}.rh-colp-tmpl--strip .rh-colp-label,
-  #rh-col-points-{{ block.id }}.rh-colp-tmpl--strip .rh-colp-rate,
+  /* Strip: base elements use accent_color — override them so they show against the accent bg */
   #rh-col-points-{{ block.id }}.rh-colp-tmpl--strip .rh-colp-icon,
-  #rh-col-points-{{ block.id }}.rh-colp-tmpl--strip .rh-colp-balance,
+  #rh-col-points-{{ block.id }}.rh-colp-tmpl--strip .rh-colp-rate,
   #rh-col-points-{{ block.id }}.rh-colp-tmpl--strip .rh-colp-info-btn {
-    color: #fff;
+    color: {{ block.settings.text_color }};
   }
   #rh-col-points-{{ block.id }}.rh-colp-tmpl--strip .rh-colp-tier {
-    background: rgba(255,255,255,0.25);
-    color: #fff;
+    background: {{ block.settings.text_color }}30;
+    color: {{ block.settings.text_color }};
   }
   #rh-col-points-{{ block.id }}.rh-colp-tmpl--strip .rh-colp-signin--link {
-    color: #fff;
-    text-decoration: underline;
+    color: {{ block.settings.text_color }};
     opacity: 0.9;
+    text-decoration: underline;
   }
   #rh-col-points-{{ block.id }}.rh-colp-tmpl--strip .rh-colp-signin--button {
-    color: #fff;
-    border-color: rgba(255,255,255,0.6);
+    color: {{ block.settings.text_color }};
+    border-color: {{ block.settings.text_color }}80;
     background: transparent;
   }
   #rh-col-points-{{ block.id }}.rh-colp-tmpl--strip .rh-colp-signin--button:hover {
-    background: rgba(255,255,255,0.15);
+    background: {{ block.settings.text_color }}15;
   }
   #rh-col-points-{{ block.id }}.rh-colp-tmpl--strip .rh-colp-signin--badge {
     color: {{ block.settings.accent_color }};
-    background: #fff;
+    background: {{ block.settings.text_color }};
   }
 
   /* ── Template: pill ────────────────────────────────────────────────────── */
@@ -584,7 +582,7 @@
       "type": "color",
       "id": "text_color",
       "label": "Text Color",
-      "info": "Strip template always uses white text.",
+      "info": "For Strip, use a colour that reads well against your Accent Color — typically white (#ffffff).",
       "default": "#1E3A5F"
     },
     {
