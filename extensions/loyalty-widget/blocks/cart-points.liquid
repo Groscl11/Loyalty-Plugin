@@ -7,7 +7,9 @@
   Add this block to the cart template in the Theme Editor → Apps → Add block.
 {% endcomment %}
 
-<div class="rh-cart-points" id="rh-cart-points-{{ block.id }}" {{ block.shopify_attributes }}>
+<div class="rh-cart-points rh-cpt--{{ block.settings.template }}"
+     id="rh-cart-points-{{ block.id }}"
+     {{ block.shopify_attributes }}>
   <div class="rh-cp-inner">
 
     <span class="rh-cp-icon">
@@ -31,7 +33,10 @@
     {% endif %}
 
     {% if block.settings.show_signin_nudge and customer == nil %}
-    <a href="/account/login" class="rh-cp-signin">Sign in to earn</a>
+    <a href="/account/login"
+       class="rh-cp-signin rh-cp-signin--{{ block.settings.signin_style }}">
+      Sign in to earn
+    </a>
     {% endif %}
 
     {% if block.settings.show_info_tooltip %}
@@ -73,21 +78,31 @@
 </div>
 
 <style>
+  /* ── Base ──────────────────────────────────────────────────────────────── */
   #rh-cart-points-{{ block.id }} {
-    background: {{ block.settings.bg_color }};
-    border: 1.5px solid {{ block.settings.accent_color }}33;
-    border-radius: {{ block.settings.border_radius }}px;
-    padding: 12px 16px;
-    margin: {{ block.settings.margin_top }}px 0 {{ block.settings.margin_bottom }}px 0;
     font-family: inherit;
+    {% if block.settings.text_size == 'small' %}
+    font-size: 12px;
+    {% elsif block.settings.text_size == 'large' %}
+    font-size: 16px;
+    {% else %}
     font-size: 14px;
+    {% endif %}
     color: {{ block.settings.text_color }};
+    margin: {{ block.settings.margin_top }}px 0 {{ block.settings.margin_bottom }}px 0;
   }
   #rh-cart-points-{{ block.id }} .rh-cp-inner {
     display: flex;
     align-items: center;
     gap: 10px;
     flex-wrap: wrap;
+    {% if block.settings.text_align == 'center' %}
+    justify-content: center;
+    {% elsif block.settings.text_align == 'end' %}
+    justify-content: flex-end;
+    {% else %}
+    justify-content: flex-start;
+    {% endif %}
   }
   #rh-cart-points-{{ block.id }} .rh-cp-icon {
     flex-shrink: 0;
@@ -96,7 +111,7 @@
     align-items: center;
   }
   #rh-cart-points-{{ block.id }} .rh-cp-content {
-    flex: 1;
+    {% if block.settings.text_align == 'start' %}flex: 1;{% endif %}
     display: flex;
     align-items: center;
     gap: 4px;
@@ -104,8 +119,14 @@
   }
   #rh-cart-points-{{ block.id }} .rh-cp-points {
     color: {{ block.settings.accent_color }};
-    font-size: 16px;
     font-weight: 700;
+    {% if block.settings.text_size == 'small' %}
+    font-size: 14px;
+    {% elsif block.settings.text_size == 'large' %}
+    font-size: 19px;
+    {% else %}
+    font-size: 16px;
+    {% endif %}
   }
   #rh-cart-points-{{ block.id }} .rh-cp-name {
     font-weight: 600;
@@ -114,20 +135,44 @@
   #rh-cart-points-{{ block.id }} .rh-cp-balance {
     font-size: 12px;
     color: {{ block.settings.text_color }}99;
-    margin-left: auto;
+    {% if block.settings.text_align == 'start' %}margin-left: auto;{% endif %}
     white-space: nowrap;
   }
+
+  /* ── Sign-in styles ────────────────────────────────────────────────────── */
   #rh-cart-points-{{ block.id }} .rh-cp-signin {
-    margin-left: auto;
-    font-size: 12px;
-    color: {{ block.settings.accent_color }};
-    text-decoration: underline;
+    {% if block.settings.text_align == 'start' %}margin-left: auto;{% endif %}
     white-space: nowrap;
     flex-shrink: 0;
+    text-decoration: none;
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1;
   }
-  #rh-cart-points-{{ block.id }} .rh-cp-progress-wrap {
-    margin-top: 8px;
+  #rh-cart-points-{{ block.id }} .rh-cp-signin--link {
+    color: {{ block.settings.accent_color }};
+    text-decoration: underline;
   }
+  #rh-cart-points-{{ block.id }} .rh-cp-signin--button {
+    color: {{ block.settings.accent_color }};
+    border: 1.5px solid {{ block.settings.accent_color }};
+    border-radius: 6px;
+    padding: 5px 13px;
+    background: transparent;
+    transition: background 0.15s;
+  }
+  #rh-cart-points-{{ block.id }} .rh-cp-signin--button:hover {
+    background: {{ block.settings.accent_color }}15;
+  }
+  #rh-cart-points-{{ block.id }} .rh-cp-signin--badge {
+    color: #fff;
+    background: {{ block.settings.accent_color }};
+    border-radius: 20px;
+    padding: 5px 14px;
+  }
+
+  /* ── Progress bar ──────────────────────────────────────────────────────── */
+  #rh-cart-points-{{ block.id }} .rh-cp-progress-wrap { margin-top: 8px; }
   #rh-cart-points-{{ block.id }} .rh-cp-progress-track {
     height: 4px;
     background: {{ block.settings.accent_color }}22;
@@ -146,10 +191,71 @@
     margin-top: 4px;
     display: block;
   }
+
+  /* ── Template: card ────────────────────────────────────────────────────── */
+  #rh-cart-points-{{ block.id }}.rh-cpt--card {
+    background: {{ block.settings.bg_color }};
+    border: 1.5px solid {{ block.settings.accent_color }}33;
+    border-radius: {{ block.settings.border_radius }}px;
+    padding: 12px 16px;
+  }
+
+  /* ── Template: minimal ─────────────────────────────────────────────────── */
+  #rh-cart-points-{{ block.id }}.rh-cpt--minimal {
+    background: transparent;
+    border: none;
+    border-radius: 0;
+    padding: 8px 0;
+  }
+
+  /* ── Template: strip ───────────────────────────────────────────────────── */
+  #rh-cart-points-{{ block.id }}.rh-cpt--strip {
+    background: {{ block.settings.accent_color }};
+    border: none;
+    border-radius: 0;
+    padding: 10px 20px;
+    color: #fff;
+  }
+  #rh-cart-points-{{ block.id }}.rh-cpt--strip .rh-cp-label,
+  #rh-cart-points-{{ block.id }}.rh-cpt--strip .rh-cp-points,
+  #rh-cart-points-{{ block.id }}.rh-cpt--strip .rh-cp-name,
+  #rh-cart-points-{{ block.id }}.rh-cpt--strip .rh-cp-icon,
+  #rh-cart-points-{{ block.id }}.rh-cpt--strip .rh-cp-balance,
+  #rh-cart-points-{{ block.id }}.rh-cpt--strip .rh-cp-progress-label,
+  #rh-cart-points-{{ block.id }}.rh-cpt--strip .rh-cp-info-btn { color: #fff; }
+  #rh-cart-points-{{ block.id }}.rh-cpt--strip .rh-cp-progress-track {
+    background: rgba(255,255,255,0.3);
+  }
+  #rh-cart-points-{{ block.id }}.rh-cpt--strip .rh-cp-progress-fill {
+    background: #fff;
+  }
+  #rh-cart-points-{{ block.id }}.rh-cpt--strip .rh-cp-signin--link { color: #fff; opacity: 0.9; text-decoration: underline; }
+  #rh-cart-points-{{ block.id }}.rh-cpt--strip .rh-cp-signin--button { color: #fff; border-color: rgba(255,255,255,0.6); background: transparent; }
+  #rh-cart-points-{{ block.id }}.rh-cpt--strip .rh-cp-signin--button:hover { background: rgba(255,255,255,0.15); }
+  #rh-cart-points-{{ block.id }}.rh-cpt--strip .rh-cp-signin--badge { color: {{ block.settings.accent_color }}; background: #fff; }
+
+  /* ── Template: pill ────────────────────────────────────────────────────── */
+  #rh-cart-points-{{ block.id }}.rh-cpt--pill {
+    background: transparent;
+    border: none;
+    padding: 0;
+    {% if block.settings.text_align == 'center' %}text-align: center;
+    {% elsif block.settings.text_align == 'end' %}text-align: right;
+    {% else %}text-align: left;{% endif %}
+  }
+  #rh-cart-points-{{ block.id }}.rh-cpt--pill .rh-cp-inner {
+    display: inline-flex;
+    background: {{ block.settings.bg_color }};
+    border: 1.5px solid {{ block.settings.accent_color }}33;
+    border-radius: 9999px;
+    padding: 6px 18px;
+  }
+
   /* ── Info tooltip ─────────────────────────────────────────────────────── */
   #rh-cart-points-{{ block.id }} .rh-cp-info-wrap {
     position: relative;
     flex-shrink: 0;
+    {% if block.settings.text_align == 'start' %}margin-left: auto;{% endif %}
     display: flex;
     align-items: center;
   }
@@ -319,6 +425,19 @@
   "target": "section",
   "settings": [
     {
+      "type": "select",
+      "id": "template",
+      "label": "Banner Style",
+      "info": "Pick a style. Use Styling settings below to customise colours and spacing.",
+      "options": [
+        { "value": "card",    "label": "Card — coloured background box (default)" },
+        { "value": "minimal", "label": "Minimal — text only, no background" },
+        { "value": "strip",   "label": "Strip — full-width accent colour bar" },
+        { "value": "pill",    "label": "Pill — compact badge, floats inline" }
+      ],
+      "default": "card"
+    },
+    {
       "type": "text",
       "id": "points_name",
       "label": "Points Name",
@@ -330,6 +449,32 @@
       "id": "label_text",
       "label": "Label text",
       "default": "Complete this order to earn"
+    },
+    {
+      "type": "header",
+      "content": "Layout"
+    },
+    {
+      "type": "select",
+      "id": "text_align",
+      "label": "Text Alignment",
+      "options": [
+        { "value": "start",  "label": "Left" },
+        { "value": "center", "label": "Centre" },
+        { "value": "end",    "label": "Right" }
+      ],
+      "default": "start"
+    },
+    {
+      "type": "select",
+      "id": "text_size",
+      "label": "Text Size",
+      "options": [
+        { "value": "small",  "label": "Small" },
+        { "value": "medium", "label": "Medium (default)" },
+        { "value": "large",  "label": "Large" }
+      ],
+      "default": "medium"
     },
     {
       "type": "header",
@@ -350,8 +495,20 @@
     {
       "type": "checkbox",
       "id": "show_signin_nudge",
-      "label": "Show 'Sign in to earn' link for guests",
+      "label": "Show 'Sign in to earn' for guests",
       "default": true
+    },
+    {
+      "type": "select",
+      "id": "signin_style",
+      "label": "Sign-in style",
+      "info": "How the sign-in call-to-action looks when shown to guests.",
+      "options": [
+        { "value": "link",   "label": "Link — underlined text" },
+        { "value": "button", "label": "Button — outlined pill" },
+        { "value": "badge",  "label": "Badge — filled accent chip" }
+      ],
+      "default": "link"
     },
     {
       "type": "header",
@@ -399,18 +556,21 @@
       "type": "color",
       "id": "accent_color",
       "label": "Accent Color",
+      "info": "Strip template uses this as its background colour.",
       "default": "#3B82F6"
     },
     {
       "type": "color",
       "id": "bg_color",
       "label": "Background Color",
+      "info": "Applies to Card and Pill templates. Ignored by Strip.",
       "default": "#EFF6FF"
     },
     {
       "type": "color",
       "id": "text_color",
       "label": "Text Color",
+      "info": "Strip template always uses white text.",
       "default": "#1E3A5F"
     },
     {

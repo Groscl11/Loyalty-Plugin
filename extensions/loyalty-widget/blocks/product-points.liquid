@@ -7,7 +7,7 @@
   Add this block to any product template in the Theme Editor → Apps → Add block.
 {% endcomment %}
 
-<div class="rh-product-points" id="rh-product-points-{{ block.id }}" {{ block.shopify_attributes }}>
+<div class="rh-product-points rh-ppt--{{ block.settings.template }}" id="rh-product-points-{{ block.id }}" {{ block.shopify_attributes }}>
   <div class="rh-pp-inner">
 
     <span class="rh-pp-icon">
@@ -35,7 +35,7 @@
     {% endif %}
 
     {% if block.settings.show_signin_nudge and customer == nil %}
-    <a href="/account/login" class="rh-pp-signin">Sign in to earn</a>
+    <a href="/account/login" class="rh-pp-signin rh-pp-signin--{{ block.settings.signin_style }}">Sign in to earn</a>
     {% endif %}
 
     {% if block.settings.show_info_tooltip %}
@@ -68,21 +68,31 @@
 </div>
 
 <style>
+  /* ── Base ──────────────────────────────────────────────────────────────── */
   #rh-product-points-{{ block.id }} {
     font-family: inherit;
+    {% if block.settings.text_size == 'small' %}
+    font-size: 12px;
+    {% elsif block.settings.text_size == 'large' %}
+    font-size: 16px;
+    {% else %}
     font-size: 14px;
+    {% endif %}
     color: {{ block.settings.text_color }};
+    margin: {{ block.settings.margin_top }}px 0 {{ block.settings.margin_bottom }}px 0;
   }
   #rh-product-points-{{ block.id }} .rh-pp-inner {
     display: flex;
     align-items: center;
     gap: 10px;
     flex-wrap: wrap;
-    background: {{ block.settings.bg_color }};
-    border: 1.5px solid {{ block.settings.primary_color }}33;
-    border-radius: {{ block.settings.border_radius }}px;
-    padding: 10px 14px;
-    margin: {{ block.settings.margin_top }}px 0 {{ block.settings.margin_bottom }}px 0;
+    {% if block.settings.text_align == 'center' %}
+    justify-content: center;
+    {% elsif block.settings.text_align == 'end' %}
+    justify-content: flex-end;
+    {% else %}
+    justify-content: flex-start;
+    {% endif %}
   }
   #rh-product-points-{{ block.id }} .rh-pp-icon {
     flex-shrink: 0;
@@ -91,7 +101,7 @@
     align-items: center;
   }
   #rh-product-points-{{ block.id }} .rh-pp-content {
-    flex: 1;
+    {% if block.settings.text_align == 'start' %}flex: 1;{% endif %}
     display: flex;
     align-items: center;
     gap: 4px;
@@ -99,8 +109,14 @@
   }
   #rh-product-points-{{ block.id }} .rh-pp-points {
     color: {{ block.settings.primary_color }};
-    font-size: 16px;
     font-weight: 700;
+    {% if block.settings.text_size == 'small' %}
+    font-size: 14px;
+    {% elsif block.settings.text_size == 'large' %}
+    font-size: 19px;
+    {% else %}
+    font-size: 16px;
+    {% endif %}
   }
   #rh-product-points-{{ block.id }} .rh-pp-name {
     font-weight: 600;
@@ -119,22 +135,97 @@
   #rh-product-points-{{ block.id }} .rh-pp-balance {
     font-size: 12px;
     color: {{ block.settings.text_color }}99;
-    margin-left: auto;
+    {% if block.settings.text_align == 'start' %}margin-left: auto;{% endif %}
     white-space: nowrap;
   }
+
+  /* ── Sign-in styles ────────────────────────────────────────────────────── */
   #rh-product-points-{{ block.id }} .rh-pp-signin {
-    margin-left: auto;
-    font-size: 12px;
-    color: {{ block.settings.primary_color }};
-    text-decoration: underline;
+    {% if block.settings.text_align == 'start' %}margin-left: auto;{% endif %}
     white-space: nowrap;
     flex-shrink: 0;
+    text-decoration: none;
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1;
   }
+  #rh-product-points-{{ block.id }} .rh-pp-signin--link {
+    color: {{ block.settings.primary_color }};
+    text-decoration: underline;
+  }
+  #rh-product-points-{{ block.id }} .rh-pp-signin--button {
+    color: {{ block.settings.primary_color }};
+    border: 1.5px solid {{ block.settings.primary_color }};
+    border-radius: 6px;
+    padding: 5px 13px;
+    background: transparent;
+    transition: background 0.15s;
+  }
+  #rh-product-points-{{ block.id }} .rh-pp-signin--button:hover {
+    background: {{ block.settings.primary_color }}15;
+  }
+  #rh-product-points-{{ block.id }} .rh-pp-signin--badge {
+    color: #fff;
+    background: {{ block.settings.primary_color }};
+    border-radius: 20px;
+    padding: 5px 14px;
+  }
+
+  /* ── Template: card ────────────────────────────────────────────────────── */
+  #rh-product-points-{{ block.id }}.rh-ppt--card .rh-pp-inner {
+    background: {{ block.settings.bg_color }};
+    border: 1.5px solid {{ block.settings.primary_color }}33;
+    border-radius: {{ block.settings.border_radius }}px;
+    padding: 10px 14px;
+  }
+
+  /* ── Template: minimal ─────────────────────────────────────────────────── */
+  #rh-product-points-{{ block.id }}.rh-ppt--minimal .rh-pp-inner {
+    background: transparent;
+    border: none;
+    border-radius: 0;
+    padding: 8px 0;
+  }
+
+  /* ── Template: strip ───────────────────────────────────────────────────── */
+  #rh-product-points-{{ block.id }}.rh-ppt--strip .rh-pp-inner {
+    background: {{ block.settings.primary_color }};
+    border: none;
+    border-radius: 0;
+    padding: 10px 16px;
+  }
+  #rh-product-points-{{ block.id }}.rh-ppt--strip,
+  #rh-product-points-{{ block.id }}.rh-ppt--strip .rh-pp-label,
+  #rh-product-points-{{ block.id }}.rh-ppt--strip .rh-pp-points,
+  #rh-product-points-{{ block.id }}.rh-ppt--strip .rh-pp-name,
+  #rh-product-points-{{ block.id }}.rh-ppt--strip .rh-pp-icon,
+  #rh-product-points-{{ block.id }}.rh-ppt--strip .rh-pp-balance,
+  #rh-product-points-{{ block.id }}.rh-ppt--strip .rh-pp-info-btn { color: #fff; }
+  #rh-product-points-{{ block.id }}.rh-ppt--strip .rh-pp-tier { background: rgba(255,255,255,0.25); color: #fff; }
+  #rh-product-points-{{ block.id }}.rh-ppt--strip .rh-pp-signin--link { color: #fff; opacity: 0.9; text-decoration: underline; }
+  #rh-product-points-{{ block.id }}.rh-ppt--strip .rh-pp-signin--button { color: #fff; border-color: rgba(255,255,255,0.6); background: transparent; }
+  #rh-product-points-{{ block.id }}.rh-ppt--strip .rh-pp-signin--button:hover { background: rgba(255,255,255,0.15); }
+  #rh-product-points-{{ block.id }}.rh-ppt--strip .rh-pp-signin--badge { color: {{ block.settings.primary_color }}; background: #fff; }
+
+  /* ── Template: pill ────────────────────────────────────────────────────── */
+  #rh-product-points-{{ block.id }}.rh-ppt--pill {
+    {% if block.settings.text_align == 'center' %}text-align: center;
+    {% elsif block.settings.text_align == 'end' %}text-align: right;
+    {% else %}text-align: left;{% endif %}
+  }
+  #rh-product-points-{{ block.id }}.rh-ppt--pill .rh-pp-inner {
+    display: inline-flex;
+    background: {{ block.settings.bg_color }};
+    border: 1.5px solid {{ block.settings.primary_color }}33;
+    border-radius: 9999px;
+    padding: 6px 18px;
+  }
+
   /* ── Info tooltip ─────────────────────────────────────────────────────── */
   #rh-product-points-{{ block.id }} .rh-pp-info-wrap {
     position: relative;
     flex-shrink: 0;
-    margin-left: auto;
+    {% if block.settings.text_align == 'start' %}margin-left: auto;{% endif %}
     display: flex;
     align-items: center;
   }
@@ -279,6 +370,19 @@
   "target": "section",
   "settings": [
     {
+      "type": "select",
+      "id": "template",
+      "label": "Banner Style",
+      "info": "Pick a style. Use Styling settings below to customise colours and spacing.",
+      "options": [
+        { "value": "card",    "label": "Card — coloured background box (default)" },
+        { "value": "minimal", "label": "Minimal — text only, no background" },
+        { "value": "strip",   "label": "Strip — full-width accent colour bar" },
+        { "value": "pill",    "label": "Pill — compact badge, floats inline" }
+      ],
+      "default": "card"
+    },
+    {
       "type": "text",
       "id": "points_name",
       "label": "Points Name",
@@ -290,6 +394,32 @@
       "id": "label_text",
       "label": "Label text",
       "default": "Earn"
+    },
+    {
+      "type": "header",
+      "content": "Layout"
+    },
+    {
+      "type": "select",
+      "id": "text_align",
+      "label": "Text Alignment",
+      "options": [
+        { "value": "start",  "label": "Left" },
+        { "value": "center", "label": "Centre" },
+        { "value": "end",    "label": "Right" }
+      ],
+      "default": "start"
+    },
+    {
+      "type": "select",
+      "id": "text_size",
+      "label": "Text Size",
+      "options": [
+        { "value": "small",  "label": "Small" },
+        { "value": "medium", "label": "Medium (default)" },
+        { "value": "large",  "label": "Large" }
+      ],
+      "default": "medium"
     },
     {
       "type": "header",
@@ -310,8 +440,20 @@
     {
       "type": "checkbox",
       "id": "show_signin_nudge",
-      "label": "Show 'Sign in to earn' link for guests",
+      "label": "Show 'Sign in to earn' for guests",
       "default": true
+    },
+    {
+      "type": "select",
+      "id": "signin_style",
+      "label": "Sign-in style",
+      "info": "How the sign-in call-to-action looks when shown to guests.",
+      "options": [
+        { "value": "link",   "label": "Link — underlined text" },
+        { "value": "button", "label": "Button — outlined pill" },
+        { "value": "badge",  "label": "Badge — filled accent chip" }
+      ],
+      "default": "link"
     },
     {
       "type": "header",
@@ -359,18 +501,21 @@
       "type": "color",
       "id": "primary_color",
       "label": "Accent Color",
+      "info": "Strip template uses this as its background colour.",
       "default": "#3B82F6"
     },
     {
       "type": "color",
       "id": "bg_color",
       "label": "Background Color",
+      "info": "Applies to Card and Pill templates. Ignored by Strip.",
       "default": "#EFF6FF"
     },
     {
       "type": "color",
       "id": "text_color",
       "label": "Text Color",
+      "info": "Strip template always uses white text.",
       "default": "#1E3A5F"
     },
     {

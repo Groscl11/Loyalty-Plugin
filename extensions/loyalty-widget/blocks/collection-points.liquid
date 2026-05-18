@@ -7,7 +7,9 @@
   Add this block to any collection template in the Theme Editor → Apps → Add block.
 {% endcomment %}
 
-<div class="rh-col-points" id="rh-col-points-{{ block.id }}" {{ block.shopify_attributes }}>
+<div class="rh-col-points rh-colp-tmpl--{{ block.settings.template }}"
+     id="rh-col-points-{{ block.id }}"
+     {{ block.shopify_attributes }}>
   <div class="rh-colp-inner">
 
     <span class="rh-colp-icon">
@@ -34,7 +36,10 @@
     {% endif %}
 
     {% if block.settings.show_signin_nudge and customer == nil %}
-    <a href="/account/login" class="rh-colp-signin">Sign in to earn</a>
+    <a href="/account/login"
+       class="rh-colp-signin rh-colp-signin--{{ block.settings.signin_style }}">
+      Sign in to earn
+    </a>
     {% endif %}
 
     {% if block.settings.show_info_tooltip %}
@@ -67,21 +72,31 @@
 </div>
 
 <style>
+  /* ── Base ──────────────────────────────────────────────────────────────── */
   #rh-col-points-{{ block.id }} {
     font-family: inherit;
+    {% if block.settings.text_size == 'small' %}
+    font-size: 12px;
+    {% elsif block.settings.text_size == 'large' %}
+    font-size: 16px;
+    {% else %}
     font-size: 14px;
+    {% endif %}
     color: {{ block.settings.text_color }};
+    margin: {{ block.settings.margin_top }}px 0 {{ block.settings.margin_bottom }}px 0;
   }
   #rh-col-points-{{ block.id }} .rh-colp-inner {
     display: flex;
     align-items: center;
     gap: 10px;
     flex-wrap: wrap;
-    background: {{ block.settings.bg_color }};
-    border: 1.5px solid {{ block.settings.accent_color }}33;
-    border-radius: {{ block.settings.border_radius }}px;
-    padding: 12px 16px;
-    margin: {{ block.settings.margin_top }}px 0 {{ block.settings.margin_bottom }}px 0;
+    {% if block.settings.text_align == 'center' %}
+    justify-content: center;
+    {% elsif block.settings.text_align == 'end' %}
+    justify-content: flex-end;
+    {% else %}
+    justify-content: flex-start;
+    {% endif %}
   }
   #rh-col-points-{{ block.id }} .rh-colp-icon {
     flex-shrink: 0;
@@ -90,7 +105,7 @@
     align-items: center;
   }
   #rh-col-points-{{ block.id }} .rh-colp-content {
-    flex: 1;
+    {% if block.settings.text_align == 'start' %}flex: 1;{% endif %}
     display: flex;
     align-items: center;
     gap: 6px;
@@ -99,7 +114,13 @@
   #rh-col-points-{{ block.id }} .rh-colp-rate {
     color: {{ block.settings.accent_color }};
     font-weight: 700;
+    {% if block.settings.text_size == 'small' %}
+    font-size: 13px;
+    {% elsif block.settings.text_size == 'large' %}
+    font-size: 18px;
+    {% else %}
     font-size: 15px;
+    {% endif %}
   }
   #rh-col-points-{{ block.id }} .rh-colp-tier {
     background: {{ block.settings.accent_color }};
@@ -114,17 +135,42 @@
   #rh-col-points-{{ block.id }} .rh-colp-balance {
     font-size: 12px;
     color: {{ block.settings.text_color }}99;
-    margin-left: auto;
+    {% if block.settings.text_align == 'start' %}margin-left: auto;{% endif %}
     white-space: nowrap;
   }
+
+  /* ── Sign-in: link (default) ───────────────────────────────────────────── */
   #rh-col-points-{{ block.id }} .rh-colp-signin {
-    margin-left: auto;
-    font-size: 12px;
-    color: {{ block.settings.accent_color }};
-    text-decoration: underline;
+    {% if block.settings.text_align == 'start' %}margin-left: auto;{% endif %}
     white-space: nowrap;
     flex-shrink: 0;
+    text-decoration: none;
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1;
   }
+  #rh-col-points-{{ block.id }} .rh-colp-signin--link {
+    color: {{ block.settings.accent_color }};
+    text-decoration: underline;
+  }
+  #rh-col-points-{{ block.id }} .rh-colp-signin--button {
+    color: {{ block.settings.accent_color }};
+    border: 1.5px solid {{ block.settings.accent_color }};
+    border-radius: 6px;
+    padding: 5px 13px;
+    background: transparent;
+    transition: background 0.15s;
+  }
+  #rh-col-points-{{ block.id }} .rh-colp-signin--button:hover {
+    background: {{ block.settings.accent_color }}15;
+  }
+  #rh-col-points-{{ block.id }} .rh-colp-signin--badge {
+    color: #fff;
+    background: {{ block.settings.accent_color }};
+    border-radius: 20px;
+    padding: 5px 14px;
+  }
+
   /* Per-product badge injected by JS into collection grid cards */
   .rh-prod-badge {
     display: inline-flex;
@@ -140,10 +186,79 @@
     margin-top: 4px;
     white-space: nowrap;
   }
+
+  /* ── Template: card ────────────────────────────────────────────────────── */
+  #rh-col-points-{{ block.id }}.rh-colp-tmpl--card .rh-colp-inner {
+    background: {{ block.settings.bg_color }};
+    border: 1.5px solid {{ block.settings.accent_color }}33;
+    border-radius: {{ block.settings.border_radius }}px;
+    padding: 12px 16px;
+  }
+
+  /* ── Template: minimal ─────────────────────────────────────────────────── */
+  #rh-col-points-{{ block.id }}.rh-colp-tmpl--minimal .rh-colp-inner {
+    background: transparent;
+    border: none;
+    border-radius: 0;
+    padding: 8px 0;
+  }
+
+  /* ── Template: strip ───────────────────────────────────────────────────── */
+  #rh-col-points-{{ block.id }}.rh-colp-tmpl--strip .rh-colp-inner {
+    background: {{ block.settings.accent_color }};
+    border: none;
+    border-radius: 0;
+    padding: 10px 20px;
+  }
+  #rh-col-points-{{ block.id }}.rh-colp-tmpl--strip,
+  #rh-col-points-{{ block.id }}.rh-colp-tmpl--strip .rh-colp-label,
+  #rh-col-points-{{ block.id }}.rh-colp-tmpl--strip .rh-colp-rate,
+  #rh-col-points-{{ block.id }}.rh-colp-tmpl--strip .rh-colp-icon,
+  #rh-col-points-{{ block.id }}.rh-colp-tmpl--strip .rh-colp-balance,
+  #rh-col-points-{{ block.id }}.rh-colp-tmpl--strip .rh-colp-info-btn {
+    color: #fff;
+  }
+  #rh-col-points-{{ block.id }}.rh-colp-tmpl--strip .rh-colp-tier {
+    background: rgba(255,255,255,0.25);
+    color: #fff;
+  }
+  #rh-col-points-{{ block.id }}.rh-colp-tmpl--strip .rh-colp-signin--link {
+    color: #fff;
+    text-decoration: underline;
+    opacity: 0.9;
+  }
+  #rh-col-points-{{ block.id }}.rh-colp-tmpl--strip .rh-colp-signin--button {
+    color: #fff;
+    border-color: rgba(255,255,255,0.6);
+    background: transparent;
+  }
+  #rh-col-points-{{ block.id }}.rh-colp-tmpl--strip .rh-colp-signin--button:hover {
+    background: rgba(255,255,255,0.15);
+  }
+  #rh-col-points-{{ block.id }}.rh-colp-tmpl--strip .rh-colp-signin--badge {
+    color: {{ block.settings.accent_color }};
+    background: #fff;
+  }
+
+  /* ── Template: pill ────────────────────────────────────────────────────── */
+  #rh-col-points-{{ block.id }}.rh-colp-tmpl--pill {
+    {% if block.settings.text_align == 'center' %}text-align: center;
+    {% elsif block.settings.text_align == 'end' %}text-align: right;
+    {% else %}text-align: left;{% endif %}
+  }
+  #rh-col-points-{{ block.id }}.rh-colp-tmpl--pill .rh-colp-inner {
+    display: inline-flex;
+    background: {{ block.settings.bg_color }};
+    border: 1.5px solid {{ block.settings.accent_color }}33;
+    border-radius: 9999px;
+    padding: 6px 18px;
+  }
+
   /* ── Info tooltip ─────────────────────────────────────────────────────── */
   #rh-col-points-{{ block.id }} .rh-colp-info-wrap {
     position: relative;
     flex-shrink: 0;
+    {% if block.settings.text_align == 'start' %}margin-left: auto;{% endif %}
     display: flex;
     align-items: center;
   }
@@ -317,6 +432,19 @@
   "target": "section",
   "settings": [
     {
+      "type": "select",
+      "id": "template",
+      "label": "Banner Style",
+      "info": "Pick a style. Use Styling settings below to customise colours and spacing.",
+      "options": [
+        { "value": "card",    "label": "Card — coloured background box (default)" },
+        { "value": "minimal", "label": "Minimal — text only, no background" },
+        { "value": "strip",   "label": "Strip — full-width accent colour bar" },
+        { "value": "pill",    "label": "Pill — compact badge, floats inline" }
+      ],
+      "default": "card"
+    },
+    {
       "type": "text",
       "id": "label_text",
       "label": "Label Text",
@@ -328,6 +456,32 @@
       "label": "Points Name",
       "info": "Shown while the earn rate loads. Overridden by your GoSelf program name.",
       "default": "Points"
+    },
+    {
+      "type": "header",
+      "content": "Layout"
+    },
+    {
+      "type": "select",
+      "id": "text_align",
+      "label": "Text Alignment",
+      "options": [
+        { "value": "start",  "label": "Left" },
+        { "value": "center", "label": "Centre" },
+        { "value": "end",    "label": "Right" }
+      ],
+      "default": "start"
+    },
+    {
+      "type": "select",
+      "id": "text_size",
+      "label": "Text Size",
+      "options": [
+        { "value": "small",  "label": "Small" },
+        { "value": "medium", "label": "Medium (default)" },
+        { "value": "large",  "label": "Large" }
+      ],
+      "default": "medium"
     },
     {
       "type": "header",
@@ -355,8 +509,20 @@
     {
       "type": "checkbox",
       "id": "show_signin_nudge",
-      "label": "Show 'Sign in to earn' link for guests",
+      "label": "Show 'Sign in to earn' for guests",
       "default": true
+    },
+    {
+      "type": "select",
+      "id": "signin_style",
+      "label": "Sign-in style",
+      "info": "How the sign-in call-to-action looks when shown to guests.",
+      "options": [
+        { "value": "link",   "label": "Link — underlined text" },
+        { "value": "button", "label": "Button — outlined pill" },
+        { "value": "badge",  "label": "Badge — filled accent chip" }
+      ],
+      "default": "link"
     },
     {
       "type": "header",
@@ -404,18 +570,21 @@
       "type": "color",
       "id": "accent_color",
       "label": "Accent Color",
+      "info": "Strip template uses this as its background colour.",
       "default": "#3B82F6"
     },
     {
       "type": "color",
       "id": "bg_color",
       "label": "Background Color",
+      "info": "Applies to Card and Pill templates. Ignored by Strip.",
       "default": "#EFF6FF"
     },
     {
       "type": "color",
       "id": "text_color",
       "label": "Text Color",
+      "info": "Strip template always uses white text.",
       "default": "#1E3A5F"
     },
     {
