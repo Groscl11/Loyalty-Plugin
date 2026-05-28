@@ -152,6 +152,9 @@ function mapDiscount(node: any, importedCodeSet: Set<string>): any | null {
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response(null, { status: 200, headers: corsHeaders });
 
+  // Hoist resolvedShop so the catch block can include it in token_expired responses
+  let resolvedShop = '';
+
   try {
     const url        = new URL(req.url);
     const shopDomain = url.searchParams.get('shop_domain') || '';
@@ -180,6 +183,7 @@ Deno.serve(async (req: Request) => {
     }
 
     const shop             = installation.shop_domain;
+    resolvedShop           = shop; // make available to catch block
     const token            = installation.access_token;
     const resolvedClientId = clientId || installation.client_id;
 
@@ -239,6 +243,9 @@ Deno.serve(async (req: Request) => {
       success: false,
       error: err.message,
       token_expired: isTokenExpired,
+      // Always include shop_domain so the frontend can build a reconnect URL
+      // even when the caller only passed client_id (shopDomain prop may be empty)
+      shop_domain: resolvedShop || undefined,
     }, isTokenExpired ? 401 : 500);
   }
 });
