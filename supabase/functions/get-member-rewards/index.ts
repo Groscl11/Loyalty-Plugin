@@ -144,7 +144,8 @@ Deno.serve(async (req: Request) => {
         offer:rewards(
           id, title, description, reward_type, offer_type, coupon_type,
           discount_value, min_purchase_amount, currency, terms_conditions,
-          generic_coupon_code, available_codes, image_url, status, is_active
+          generic_coupon_code, available_codes, image_url, status, is_active,
+          owner_client:clients!owner_client_id(logo_url, name)
         )
       `)
       .eq("distributing_client_id", clientId)
@@ -171,6 +172,7 @@ Deno.serve(async (req: Request) => {
         min_purchase_amount: d.offer.min_purchase_amount,
         generic_coupon_code: d.offer.generic_coupon_code,
         available_codes: d.offer.available_codes,
+        image_url: d.offer.image_url ?? d.offer.owner_client?.logo_url ?? null,
         points_cost: d.points_cost,        // from offer_distributions, NOT rewards
         access_type: d.access_type,
         category: "discount",
@@ -191,11 +193,11 @@ Deno.serve(async (req: Request) => {
         title: d.offer.title,
         description: d.offer.description,
         value_description: d.offer.description,
-        image_url: d.offer.image_url ?? null,
+        image_url: d.offer.image_url ?? d.offer.owner_client?.logo_url ?? null,
         coupon_type: d.offer.coupon_type ?? "unique",
         generic_coupon_code: d.offer.coupon_type === "generic" ? d.offer.generic_coupon_code : null,
-        brand_name: null,
-        brand_logo: null,
+        brand_name: d.offer.owner_client?.name ?? null,
+        brand_logo: d.offer.owner_client?.logo_url ?? null,
         brand_website_url: null,
         category: "partner",
         points_cost: d.points_cost,        // from offer_distributions
