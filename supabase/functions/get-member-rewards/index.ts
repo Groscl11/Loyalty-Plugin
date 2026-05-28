@@ -133,7 +133,7 @@ Deno.serve(async (req: Request) => {
     }
 
 
-    // ── 4. Fetch discount rewards (Shopify-backed) ────────────────────────────
+    // ── 4. Fetch distributions + rewards (flat — no nested client join) ─────────
     const { data: rawDistributions } = await supabase
       .from("offer_distributions")
       .select(`
@@ -144,8 +144,8 @@ Deno.serve(async (req: Request) => {
         offer:rewards(
           id, title, description, reward_type, offer_type, coupon_type,
           discount_value, min_purchase_amount, currency, terms_conditions,
-          generic_coupon_code, available_codes, image_url, status, is_active,
-          owner_client:clients!owner_client_id(logo_url, name)
+          generic_coupon_code, available_codes, image_url, owner_client_id,
+          status, is_active
         )
       `)
       .eq("distributing_client_id", clientId)
@@ -154,6 +154,30 @@ Deno.serve(async (req: Request) => {
     const activeDistributions = (rawDistributions ?? []).filter((d: any) =>
       d.offer && d.offer.is_active === true && d.offer.status === "active"
     );
+
+    // ── 4a. Fetch client logos for all owner_client_ids in one query ──────────
+    const ownerClientIds = [
+      ...new Set(
+        activeDistributions
+          .map((d: any) => d.offer.owner_client_id)
+          .filter(Boolean)
+      ),
+    ] as string[];
+
+    const clientLogoMap: Record<string, { logo_url: string | null; name: string | null }> = {};
+    if (ownerClientIds.length > 0) {
+      const { data: clientRows } = await supabase
+        .from("clients")
+        .select("id, logo_url, name")
+        .in("id", ownerClientIds);
+      for (const c of (clientRows ?? [])) {
+        clientLogoMap[c.id] = { logo_url: c.logo_url ?? null, name: c.name ?? null };
+      }
+    }
+
+    // Helper: resolve the best logo for a reward
+    const resolveImage = (offer: any): string | null =>
+      offer.image_url ?? clientLogoMap[offer.owner_client_id]?.logo_url ?? null;
 
     const discountRewards = activeDistributions
       .filter((d: any) =>
@@ -172,7 +196,7 @@ Deno.serve(async (req: Request) => {
         min_purchase_amount: d.offer.min_purchase_amount,
         generic_coupon_code: d.offer.generic_coupon_code,
         available_codes: d.offer.available_codes,
-        image_url: d.offer.image_url ?? d.offer.owner_client?.logo_url ?? null,
+        image_url: resolveImage(d.offer),
         points_cost: d.points_cost,        // from offer_distributions, NOT rewards
         access_type: d.access_type,
         category: "discount",
@@ -180,7 +204,7 @@ Deno.serve(async (req: Request) => {
       }))
       .sort((a: any, b: any) => (a.points_cost ?? 0) - (b.points_cost ?? 0));
 
-    // ── 5. Fetch brand rewards (marketplace, configured by client) ────────────
+    // ── 5. Fetch brand rewards (partner vouchers) ─────────────────────────────
     const brandRewards = activeDistributions
       .filter((d: any) => d.offer.offer_type === "partner_voucher")
       .filter((d: any) => {
@@ -193,11 +217,11 @@ Deno.serve(async (req: Request) => {
         title: d.offer.title,
         description: d.offer.description,
         value_description: d.offer.description,
-        image_url: d.offer.image_url ?? d.offer.owner_client?.logo_url ?? null,
+        image_url: resolveImage(d.offer),
         coupon_type: d.offer.coupon_type ?? "unique",
         generic_coupon_code: d.offer.coupon_type === "generic" ? d.offer.generic_coupon_code : null,
-        brand_name: d.offer.owner_client?.name ?? null,
-        brand_logo: d.offer.owner_client?.logo_url ?? null,
+        brand_name: clientLogoMap[d.offer.owner_client_id]?.name ?? null,
+        brand_logo: resolveImage(d.offer),
         brand_website_url: null,
         category: "partner",
         points_cost: d.points_cost,        // from offer_distributions
