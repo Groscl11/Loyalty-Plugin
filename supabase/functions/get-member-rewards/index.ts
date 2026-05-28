@@ -145,14 +145,14 @@ Deno.serve(async (req: Request) => {
           id, title, description, reward_type, offer_type, coupon_type,
           discount_value, min_purchase_amount, currency, terms_conditions,
           generic_coupon_code, available_codes, image_url, owner_client_id,
-          status, is_active
+          status
         )
       `)
       .eq("distributing_client_id", clientId)
       .eq("is_active", true);
 
     const activeDistributions = (rawDistributions ?? []).filter((d: any) =>
-      d.offer && d.offer.is_active === true && d.offer.status === "active"
+      d.offer && d.offer.status === "active"
     );
 
     // ── 4a. Fetch client logos for all owner_client_ids in one query ──────────
