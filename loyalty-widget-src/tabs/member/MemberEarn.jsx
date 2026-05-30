@@ -163,8 +163,19 @@ const MemberEarn = React.memo(function MemberEarn({ data, config, setTab, openSu
     );
   }
 
-  const available = rawRules.filter(r => !r.is_completed);
-  const claimed   = rawRules.filter(r =>  r.is_completed);
+  // A rule is "visually done" if backend marks it completed OR it's a
+  // date-based rule with a saved value, OR it's a signup rule (auto-earned).
+  const isVisuallyClaimed = (r) => {
+    if (r.is_completed) return true;
+    const rt = inferRuleType(r);
+    if (rt === 'signup') return true;
+    if (rt === 'birthday'    && r.saved_value) return true;
+    if (rt === 'anniversary' && r.saved_value) return true;
+    return false;
+  };
+
+  const available = rawRules.filter(r => !isVisuallyClaimed(r));
+  const claimed   = rawRules.filter(r =>  isVisuallyClaimed(r));
   const totalAvailable = available.reduce((sum, r) => sum + (r.points_reward || 0), 0);
 
   return (
@@ -190,7 +201,7 @@ const MemberEarn = React.memo(function MemberEarn({ data, config, setTab, openSu
           config={config}
           setTab={setTab}
           openSurvey={openSurvey}
-          isClaimed={false}
+          isClaimed={isVisuallyClaimed(rule)}
           onClaimSuccess={() => data.refetch('earn_rules')}
         />
       ))}
@@ -274,15 +285,21 @@ function EarnRuleCard({ rule, config, setTab, openSurvey, isClaimed, onClaimSucc
   }, [ruleType, rule, isSaved, setTab, openSurvey, onClaimSuccess]);
 
   function ctaLabel() {
+    // Date-based rules: show "✓ Saved" (not generic "✓ Claimed") so users know
+    // the date is stored and points are awarded on the actual date each year.
+    if (ruleType === 'birthday')              return rule.saved_value ? '✓ Saved' : 'Add Date';
+    if (ruleType === 'anniversary')           return rule.saved_value ? '✓ Saved' : 'Add Date';
+    // Signup is always auto-earned on join — always show explicit label.
+    if (ruleType === 'signup')                return '✓ Auto-Earned';
+    // Generic claimed state for everything else.
     if (isSaved)                              return '✓ Claimed';
     if (ruleType === 'order')                 return 'Shop Now';
     if (ruleType === 'referral')              return 'Invite';
     if (ruleType === 'survey')                return 'Take Survey';
-    if (ruleType === 'birthday')              return rule.saved_value ? '✓ Saved' : 'Add Date';
-    if (ruleType === 'anniversary')           return rule.saved_value ? '✓ Saved' : 'Add Date';
     if (ruleType === 'profile_complete')      return 'Complete';
     if (ruleType === 'social')                return 'Follow';
-    if (ruleType === 'review')                return 'Review';    if (ruleType === 'signup')                return '\u2713 Auto-Earned';    return 'Earn';
+    if (ruleType === 'review')                return 'Review';
+    return 'Earn';
   }
 
   return (
