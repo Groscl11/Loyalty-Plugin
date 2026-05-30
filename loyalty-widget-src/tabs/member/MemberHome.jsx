@@ -1,10 +1,18 @@
 /**
- * MemberHome — GoSelf Loyalty Widget V6
- * Dashboard: points hero, ledger summary, survey nudge, next milestone, quick nav.
+ * MemberHome — feed-style home for active members.
+ *
+ * Layout (top-to-bottom):
+ *   1. Personalised greeting
+ *   2. Tier card with progress bar to next tier
+ *   3. Primary CTA card — "Next reward" (closest unlocked redeemable)
+ *   4. Quick ways to earn (top 2 actions teaser)
+ *   5. Recent activity (last 3 transactions)
+ *
+ * Replaces the previous QuickNav 6-tile grid which duplicated the bottom nav.
  */
 
 import React, { useMemo } from 'react';
-import { formatPoints } from '../../utils/formatPoints.js';
+import { tokens, tierStyle, accentSoft, fmtPts, adjustColor } from '../../utils/tokens.js';
 import { interpolate } from '../../utils/interpolate.js';
 
 const TIER_ORDER = ['bronze', 'silver', 'gold', 'platinum'];
@@ -15,230 +23,343 @@ const MemberHome = React.memo(function MemberHome({
   setTab,
   openSurvey,
 }) {
-  const { customer, merchant, history, milestones, survey } = data;
+  const { customer, merchant, history, redeemCatalog, survey } = data;
 
-  // Ledger aggregates — use lifetime totals from API when available, otherwise
-  // compute from the local transaction history cache
-  const totalEarned = useMemo(() => {
-    if (customer.lifetimeEarned > 0) return customer.lifetimeEarned;
-    return history.filter(t => t.type === 'earn').reduce((s, t) => s + (t.delta || 0), 0);
-  }, [customer.lifetimeEarned, history]);
-  const totalRedeemed = useMemo(() => {
-    if (customer.lifetimeRedeemed > 0) return customer.lifetimeRedeemed;
-    return history.filter(t => t.type === 'redeem').reduce((s, t) => s + Math.abs(t.delta || 0), 0);
-  }, [customer.lifetimeRedeemed, history]);
-
-  // Tier progress
-  const currentTier  = customer.tier || 'bronze';
-  const nextTierKey  = TIER_ORDER[TIER_ORDER.indexOf(currentTier) + 1];
-  const nextTierThreshold = nextTierKey ? merchant.tierThresholds?.[nextTierKey] || 0 : null;
-  const currentThreshold  = merchant.tierThresholds?.[currentTier] || 0;
-  const ptsToNext = nextTierThreshold ? Math.max(0, nextTierThreshold - customer.pointsBalance) : 0;
-  const progressPct = nextTierThreshold
-    ? Math.min(100, Math.round(((customer.pointsBalance - currentThreshold) / (nextTierThreshold - currentThreshold)) * 100))
+  // ── Tier progress ─────────────────────────────────────────────────────────
+  const currentTier      = customer.tier || 'bronze';
+  const tierVis          = tierStyle(currentTier);
+  const nextTierKey      = TIER_ORDER[TIER_ORDER.indexOf(currentTier) + 1];
+  const nextThreshold    = nextTierKey ? merchant.tierThresholds?.[nextTierKey] || 0 : null;
+  const currentThreshold = merchant.tierThresholds?.[currentTier] || 0;
+  // Tier progress uses lifetime earned — spending points never resets your tier progress
+  const lifetimePts      = customer.lifetimeEarned || 0;
+  const ptsToNext        = nextThreshold ? Math.max(0, nextThreshold - lifetimePts) : 0;
+  const progressPct      = nextThreshold
+    ? Math.min(100, Math.max(0, Math.round(((lifetimePts - currentThreshold) / (nextThreshold - currentThreshold)) * 100)))
     : 100;
 
-  // Next incomplete milestone
-  const nextMilestone = milestones.find(m => !m.isCompleted);
+  // ── Next reward (closest redeemable the user is working toward) ──────────
+  const nextReward = useMemo(() => {
+    const all = [
+      ...(redeemCatalog?.discountRewards || []),
+      ...(redeemCatalog?.brandRewards    || []),
+      ...(redeemCatalog?.manualRewards   || []),
+    ];
+    if (!all.length) return null;
+    const balance = customer.pointsBalance || 0;
+    // Prefer the cheapest reward they CAN afford; else the cheapest one above balance.
+    const affordable = all.filter(r => balance >= (r.pointsCost ?? 0));
+    if (affordable.length) {
+      return [...affordable].sort((a, b) => (b.pointsCost ?? 0) - (a.pointsCost ?? 0))[0];
+    }
+    return [...all].sort((a, b) => (a.pointsCost ?? 0) - (b.pointsCost ?? 0))[0];
+  }, [redeemCatalog, customer.pointsBalance]);
 
-  // Quick nav tiles
-  const quickNav = [
-    { id: 'earn',       icon: '🪙', label: 'Earn' },
-    { id: 'redeem',     icon: '🎁', label: 'Redeem' },
-    { id: 'wallet',     icon: '💳', label: 'Wallet' },
-    config.showReferTab    && { id: 'refer',      icon: '📣', label: 'Refer' },
-    config.showMilestones  && { id: 'milestones', icon: '🏆', label: 'Milestones' },
-    { id: 'profile',    icon: '👤', label: 'Profile' },
-  ].filter(Boolean);
+  const nextRewardProgress = nextReward
+    ? Math.min(100, Math.round(((customer.pointsBalance || 0) / (nextReward.pointsCost || 1)) * 100))
+    : 0;
+  const canRedeemNext = nextReward && (customer.pointsBalance || 0) >= (nextReward.pointsCost || 0);
+  const nextRewardGap = nextReward ? Math.max(0, (nextReward.pointsCost || 0) - (customer.pointsBalance || 0)) : 0;
+
+  // ── Greeting ─────────────────────────────────────────────────────────────
+  const greeting = interpolate(config.welcomeMsg || 'Hi {firstName} 👋', {
+    firstName: customer.firstName || 'there',
+  });
+
+  // ── Recent activity ──────────────────────────────────────────────────────
+  const recent = (history || []).slice(0, 3);
+
+  // ── Top earn actions (teaser for home) ───────────────────────────────────
+  const earnRules = merchant.earnRules || [];
+  const topEarn = earnRules.find(r => r.featured) || earnRules[0];
+  const referEarn = earnRules.find(r => r.id === 'er3' || /refer/i.test(r.label));
 
   return (
-    <div style={{ padding: '0 0 24px' }}>
+    <div style={{ padding: '16px 16px 24px', background: tokens.surface }}>
 
-      {/* Points hero card */}
+      {/* ─── Greeting ────────────────────────────────────────────────── */}
+      <div style={{ fontSize: 22, fontWeight: 600, marginBottom: 16, color: tokens.text }}>
+        {greeting}
+      </div>
+
+      {/* ─── Tier card with progress ─────────────────────────────────── */}
       <div
         style={{
-          background: `linear-gradient(135deg, ${config.accentColor} 0%, #7c3aed 100%)`,
-          padding: '18px 18px 16px',
-          color: '#fff',
+          background: tierVis.bg,
+          borderRadius: tokens.radiusLg,
+          padding: 16,
+          marginBottom: 12,
+          position: 'relative',
+          overflow: 'hidden',
         }}
       >
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-          <div>
-            <div style={{ fontSize: 13, opacity: 0.85, marginBottom: 4 }}>
-              {interpolate(config.welcomeMsg, { firstName: customer.firstName || 'there' })}
-            </div>
-            <div style={{ fontSize: 32, fontWeight: 800, lineHeight: 1 }}>
-              {Number(customer.pointsBalance).toLocaleString('en-IN')}
-            </div>
-            <div style={{ fontSize: 12, opacity: 0.8, marginTop: 3 }}>
-              {config.pointsNoun} balance
-            </div>
-          </div>
-
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
-            {/* Tier badge */}
-            <div
-              style={{
-                background: 'rgba(255,255,255,0.22)',
-                borderRadius: 16,
-                padding: '4px 12px',
-                fontSize: 12,
-                fontWeight: 600,
-                display: 'flex',
-                alignItems: 'center',
-                gap: 5,
-              }}
-            >
-              <span>🏅</span>
-              <span>{config.tierNames[currentTier] || currentTier}</span>
-            </div>
-          </div>
+        {/* Decorative bubble */}
+        <div
+          aria-hidden="true"
+          style={{
+            position: 'absolute',
+            top: -30, right: -30,
+            width: 100, height: 100,
+            background: 'rgba(255,255,255,0.4)',
+            borderRadius: '50%',
+          }}
+        />
+        <div style={{
+          fontSize: 11, fontWeight: 700, color: tierVis.accent,
+          textTransform: 'uppercase', letterSpacing: 0.5,
+          marginBottom: 4, position: 'relative',
+          display: 'flex', alignItems: 'center', gap: 6,
+        }}>
+          <span style={{ fontSize: 14 }}>{tierVis.emoji}</span>
+          {config.tierNames?.[currentTier] || currentTier} tier
         </div>
-
-        {/* Tier progress bar */}
-        {nextTierThreshold && (
-          <div style={{ marginTop: 14 }}>
-            <div style={{ fontSize: 11, opacity: 0.8, marginBottom: 5 }}>
-              {formatPoints(ptsToNext, config)} to {config.tierNames[nextTierKey] || nextTierKey}
+        <div style={{
+          fontSize: 30, fontWeight: 700,
+          color: tierVis.text, letterSpacing: -0.5,
+          marginBottom: 12, position: 'relative',
+        }}>
+          {fmtPts(customer.pointsBalance)} {config.pointsAbbrev || 'pts'}
+        </div>
+        {nextThreshold && (
+          <>
+            <div style={{
+              height: 8, background: 'rgba(255,255,255,0.5)',
+              borderRadius: 4, overflow: 'hidden',
+              marginBottom: 6, position: 'relative',
+            }}>
+              <div style={{
+                width: `${progressPct}%`, height: '100%',
+                background: 'linear-gradient(90deg, #f59e0b, #ef4444)',
+                borderRadius: 4, transition: 'width 0.5s ease',
+              }} />
             </div>
-            <div style={{ background: 'rgba(255,255,255,0.25)', borderRadius: 4, height: 6 }}>
-              <div
-                style={{
-                  width: `${progressPct}%`,
-                  height: '100%',
-                  background: '#ffffff',
-                  borderRadius: 4,
-                  transition: 'width 0.5s ease',
-                }}
-              />
+            <div style={{ fontSize: 12, color: tierVis.text, fontWeight: 500, position: 'relative' }}>
+              {fmtPts(ptsToNext)} {config.pointsAbbrev || 'pts'} to{' '}
+              <strong style={{ fontWeight: 700 }}>
+                {config.tierNames?.[nextTierKey] || nextTierKey} →
+              </strong>
             </div>
-          </div>
+            <div style={{ fontSize: 10, color: tierVis.text, opacity: 0.75, marginTop: 2, position: 'relative' }}>
+              {fmtPts(lifetimePts)} earned so far · spending points doesn't reset your tier
+            </div>
+          </>
         )}
       </div>
 
-      <div style={{ padding: '0 16px' }}>
-
-        {/* Ledger summary row */}
+      {/* ─── Primary CTA: Next reward ────────────────────────────────── */}
+      {nextReward && (
         <button
-          onClick={() => setTab('history')}
+          onClick={() => setTab('redeem')}
           style={{
             width: '100%',
+            background: accentSoft(config.accentColor),
+            border: `1px solid ${config.accentColor}`,
+            borderRadius: tokens.radiusLg,
+            padding: 14,
+            marginBottom: 12,
             display: 'flex',
-            background: '#f9fafb',
-            border: '1px solid #f3f4f6',
-            borderRadius: 12,
-            padding: '12px 14px',
-            marginTop: 14,
+            alignItems: 'center',
+            gap: 12,
             cursor: 'pointer',
-            gap: 8,
+            textAlign: 'left',
           }}
         >
-          <LedgerCell label="Earned" value={`+${Number(totalEarned).toLocaleString('en-IN')}`} color="#16a34a" />
-          <div style={{ width: 1, background: '#e5e7eb', margin: '0 4px' }} />
-          <LedgerCell label="Redeemed" value={`-${Number(totalRedeemed).toLocaleString('en-IN')}`} color="#ef4444" />
-          <div style={{ width: 1, background: '#e5e7eb', margin: '0 4px' }} />
-          <LedgerCell label="Balance" value={Number(customer.pointsBalance).toLocaleString('en-IN')} color={config.accentColor} />
-          <span style={{ color: '#9ca3af', fontSize: 16, alignSelf: 'center', marginLeft: 'auto' }}>›</span>
+          <div style={{ fontSize: 24, width: 32, textAlign: 'center', flexShrink: 0 }}>
+            🚚
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{
+              fontSize: 11, color: tokens.textMuted, marginBottom: 2,
+              textTransform: 'uppercase', letterSpacing: 0.5, fontWeight: 600,
+            }}>
+              {canRedeemNext ? 'Ready to redeem' : 'Next reward'}
+            </div>
+            <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 6, color: tokens.text }}>
+              {nextReward.title}
+            </div>
+            <div style={{
+              height: 4, background: tokens.border, borderRadius: 2,
+              overflow: 'hidden', marginBottom: 4,
+            }}>
+              <div style={{
+                width: `${nextRewardProgress}%`, height: '100%',
+                background: config.accentColor,
+              }} />
+            </div>
+            <div style={{ fontSize: 11, color: tokens.textMuted }}>
+              {canRedeemNext
+                ? `Costs ${fmtPts(nextReward.pointsCost)} ${config.pointsAbbrev || 'pts'}`
+                : `${fmtPts(nextRewardGap)} ${config.pointsAbbrev || 'pts'} to unlock`}
+            </div>
+          </div>
+          <div style={{
+            background: config.accentColor, color: '#fff',
+            padding: '8px 14px', borderRadius: tokens.radiusMd,
+            fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', flexShrink: 0,
+          }}>
+            {canRedeemNext ? 'Redeem →' : 'View'}
+          </div>
         </button>
+      )}
 
-        {/* Survey nudge */}
-        {config.showSurveyOnHome && survey?.questions?.length > 0 && (
-          <button
-            onClick={openSurvey}
-            style={{
-              width: '100%',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 12,
-              background: '#fffbeb',
-              border: '1px solid #fde68a',
-              borderRadius: 12,
-              padding: '12px 14px',
-              marginTop: 10,
-              cursor: 'pointer',
-              textAlign: 'left',
-            }}
-          >
-            <span style={{ fontSize: 22 }}>📋</span>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontWeight: 600, fontSize: 13, color: '#92400e' }}>
-                {survey.headline || `Quick survey — earn ${survey.rewardPts} ${config.pointsAbbrev}!`}
-              </div>
-              <div style={{ fontSize: 11, color: '#a16207', marginTop: 2 }}>
-                {survey.questions.length} questions · 1 min
-              </div>
-            </div>
-            <span style={{ color: '#f59e0b', fontSize: 16 }}>›</span>
-          </button>
-        )}
-
-        {/* Next milestone */}
-        {nextMilestone && (
-          <button
-            onClick={() => setTab('milestones')}
-            style={{
-              width: '100%',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 12,
-              background: '#f0fdf4',
-              border: '1px solid #86efac',
-              borderRadius: 12,
-              padding: '12px 14px',
-              marginTop: 10,
-              cursor: 'pointer',
-              textAlign: 'left',
-            }}
-          >
-            <span style={{ fontSize: 22 }}>{nextMilestone.icon}</span>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontWeight: 600, fontSize: 12, color: '#6b7280', textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                Next: {nextMilestone.label}
-              </div>
-              <div style={{ fontSize: 12, color: '#374151', marginTop: 2 }}>
-                {Number(nextMilestone.pointsRequired).toLocaleString('en-IN')} {config.pointsAbbrev} → {nextMilestone.reward}
-              </div>
-            </div>
-            <span style={{ color: '#9ca3af', fontSize: 16 }}>›</span>
-          </button>
-        )}
-
-        {/* Quick nav grid */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginTop: 16 }}>
-          {quickNav.map(tile => (
-            <button
-              key={tile.id}
-              onClick={() => setTab(tile.id)}
-              style={{
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                justifyContent: 'center',
-                padding: '12px 8px',
-                background: '#f9fafb',
-                border: '1px solid #f3f4f6',
-                borderRadius: 12,
-                cursor: 'pointer',
-                gap: 6,
+      {/* ─── Quick ways to earn ──────────────────────────────────────── */}
+      {(topEarn || referEarn) && (
+        <>
+          <SectionHeader title="Quick ways to earn" />
+          {topEarn && (
+            <EarnRow
+              rule={topEarn}
+              accentColor={config.accentColor}
+              onClick={() => {
+                if (/survey/i.test(topEarn.label) && openSurvey) openSurvey();
+                else setTab('earn');
               }}
-            >
-              <span style={{ fontSize: 22 }}>{tile.icon}</span>
-              <span style={{ fontSize: 11, fontWeight: 500, color: '#374151' }}>{tile.label}</span>
-            </button>
-          ))}
+            />
+          )}
+          {referEarn && referEarn.id !== topEarn?.id && (
+            <EarnRow
+              rule={referEarn}
+              accentColor={config.accentColor}
+              onClick={() => setTab('refer')}
+            />
+          )}
+          <button
+            onClick={() => setTab('earn')}
+            style={{
+              width: '100%', textAlign: 'center',
+              border: 'none', background: 'transparent',
+              color: config.accentColor, fontSize: 13, fontWeight: 500,
+              padding: '8px 0 4px', cursor: 'pointer', marginTop: 4,
+            }}
+          >
+            See all ways to earn →
+          </button>
+        </>
+      )}
+
+      {/* ─── Recent activity ─────────────────────────────────────────── */}
+      <SectionHeader title="Recent activity" marginTop={20} />
+      {recent.length > 0 ? (
+        <>
+          {recent.map(tx => <ActivityRow key={tx.id} tx={tx} pointsAbbrev={config.pointsAbbrev} />)}
+          <button
+            onClick={() => setTab('history')}
+            style={{
+              width: '100%', textAlign: 'center',
+              border: 'none', background: 'transparent',
+              color: config.accentColor, fontSize: 13, fontWeight: 500,
+              padding: '8px 0 0', cursor: 'pointer',
+            }}
+          >
+            See all transactions →
+          </button>
+        </>
+      ) : (
+        <div style={{
+          textAlign: 'center', padding: '20px 0',
+          color: tokens.textMuted, fontSize: 13,
+          border: `1px dashed ${tokens.border}`,
+          borderRadius: tokens.radiusMd,
+        }}>
+          No activity yet — earn your first points above ↑
         </div>
-      </div>
+      )}
     </div>
   );
 });
 
-function LedgerCell({ label, value, color }) {
+function SectionHeader({ title, marginTop = 16 }) {
   return (
-    <div style={{ flex: 1, textAlign: 'center' }}>
-      <div style={{ fontWeight: 700, fontSize: 14, color }}>{value}</div>
-      <div style={{ fontSize: 10, color: '#9ca3af', marginTop: 2 }}>{label}</div>
+    <div style={{
+      fontSize: 11, fontWeight: 700, color: tokens.textMuted,
+      marginTop, marginBottom: 8,
+      textTransform: 'uppercase', letterSpacing: 0.5,
+    }}>
+      {title}
     </div>
   );
+}
+
+function EarnRow({ rule, accentColor, onClick }) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        width: '100%', display: 'flex', alignItems: 'center', gap: 12,
+        background: tokens.surface,
+        border: `1px solid ${tokens.border}`,
+        borderRadius: tokens.radiusLg,
+        padding: 12, marginBottom: 8,
+        cursor: 'pointer', textAlign: 'left',
+      }}
+    >
+      <div style={{
+        width: 40, height: 40, borderRadius: 10,
+        background: accentSoft(accentColor),
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        fontSize: 20, flexShrink: 0,
+      }}>
+        {rule.icon || '✨'}
+      </div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 14, fontWeight: 600, color: tokens.text }}>
+          {rule.label}
+        </div>
+        <div style={{ fontSize: 12, color: tokens.successText, fontWeight: 600, marginTop: 2 }}>
+          {rule.pointValue} {rule.featured && ' · POPULAR'}
+        </div>
+      </div>
+      <span style={{ color: tokens.textSubtle, fontSize: 18 }}>›</span>
+    </button>
+  );
+}
+
+function ActivityRow({ tx, pointsAbbrev }) {
+  const isEarn = tx.type === 'earn' || (tx.delta ?? 0) > 0;
+  const delta = tx.delta ?? 0;
+  const sign = delta > 0 ? '+' : '';
+  return (
+    <div style={{
+      display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+      padding: '10px 0', borderBottom: `1px solid ${tokens.border}`,
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
+        <span style={{
+          color: isEarn ? tokens.successText : tokens.danger,
+          fontWeight: 700, fontSize: 13,
+          background: isEarn ? tokens.successSoft : tokens.dangerSoft,
+          padding: '2px 8px', borderRadius: 999,
+          minWidth: 48, textAlign: 'center', flexShrink: 0,
+        }}>
+          {sign}{fmtPts(Math.abs(delta))}
+        </span>
+        <span style={{
+          fontSize: 13, color: tokens.text,
+          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+        }}>
+          {tx.description || tx.label || (isEarn ? 'Points earned' : 'Points redeemed')}
+        </span>
+      </div>
+      <span style={{ fontSize: 11, color: tokens.textMuted, flexShrink: 0, marginLeft: 8 }}>
+        {formatRelativeDate(tx.created_at || tx.date)}
+      </span>
+    </div>
+  );
+}
+
+function formatRelativeDate(d) {
+  if (!d) return '';
+  try {
+    const date = new Date(d);
+    const diffMs = Date.now() - date.getTime();
+    const diffDays = Math.floor(diffMs / 86400000);
+    if (diffDays < 1)   return 'today';
+    if (diffDays === 1) return '1 day ago';
+    if (diffDays < 7)   return `${diffDays} days ago`;
+    if (diffDays < 14)  return '1 week ago';
+    if (diffDays < 30)  return `${Math.floor(diffDays / 7)} weeks ago`;
+    return date.toLocaleDateString('en-IN', { month: 'short', day: 'numeric' });
+  } catch { return ''; }
 }
 
 export default MemberHome;
