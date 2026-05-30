@@ -134,9 +134,10 @@ Deno.serve(async (req: Request) => {
     const updatedFullName  = (updates.full_name        ?? member.full_name)?.trim()        || '';
     const updatedPhone     = (updates.phone             ?? member.phone)?.trim()            || '';
     const updatedDob       = (updates.date_of_birth     ?? member.date_of_birth)           || '';
-    const updatedAnniv     = (updates.anniversary_date  ?? member.anniversary_date)        || '';
 
-    const profileNowComplete = !!(updatedFullName && updatedPhone && updatedDob && updatedAnniv);
+    // Anniversary is now a separate earn action — profile_complete only requires
+    // name + phone + birthday so more members can reach the bonus.
+    const profileNowComplete = !!(updatedFullName && updatedPhone && updatedDob);
     let pointsAwarded = 0;
     let profileRuleId: string | null = null;
 
@@ -213,17 +214,9 @@ Deno.serve(async (req: Request) => {
         if (!existingTxn) {
           const pts = profileRule.points_reward || 100;
 
-          // Update balance
-          await supabase
-            .from('member_loyalty_status')
-            .update({
-              points_balance:         (statusRow.points_balance        || 0) + pts,
-              lifetime_points_earned: (statusRow.lifetime_points_earned || 0) + pts,
-            })
-            .eq('id', statusRow.id);
-
-          // Insert transaction with rule_id in metadata (so get-earning-rules marks it complete)
-          await supabase
+          // INSERT transaction FIRST — if this fails (duplicate key, RLS, etc.)
+          // we skip the balance update so points are never awarded without a record.
+          const { error: txnErr } = await supabase
             .from('loyalty_points_transactions')
             .insert({
               member_loyalty_status_id: statusRow.id,
@@ -234,7 +227,26 @@ Deno.serve(async (req: Request) => {
               metadata:                 { rule_id: profileRule.id },
             });
 
-          pointsAwarded = pts;
+          if (txnErr) {
+            console.error('[update-customer-profile] transaction insert failed:', txnErr.message);
+            // Do NOT update balance — skip awarding points to stay consistent
+          } else {
+            // Transaction committed — now update the running balance
+            const { error: balErr } = await supabase
+              .from('member_loyalty_status')
+              .update({
+                points_balance:         (statusRow.points_balance        || 0) + pts,
+                lifetime_points_earned: (statusRow.lifetime_points_earned || 0) + pts,
+              })
+              .eq('id', statusRow.id);
+
+            if (balErr) {
+              console.error('[update-customer-profile] balance update failed:', balErr.message);
+              // Transaction row exists but balance wasn't updated — log for manual reconciliation
+            } else {
+              pointsAwarded = pts;
+            }
+          }
         }
       }
     }

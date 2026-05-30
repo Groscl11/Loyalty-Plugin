@@ -91,16 +91,21 @@ Deno.serve(async (req: Request) => {
         }
       }
 
-      // Also check if member has birthday/anniversary saved
+      // Also check member profile fields for date-based and profile_complete rules
       const { data: memberProfile } = await supabase
         .from("member_users")
-        .select("date_of_birth, anniversary_date")
+        .select("date_of_birth, anniversary_date, full_name, phone")
         .eq("id", memberUserId)
         .maybeSingle();
 
-      // We'll attach this info at the per-rule level below
-      // so the widget knows whether to show the date already saved
       const profile = memberProfile || {};
+      // Profile is considered complete when name + phone + birthday are set.
+      // Anniversary is a separate earn action and is no longer required here.
+      const profileIsComplete = !!(
+        (profile as any).full_name?.trim() &&
+        (profile as any).phone?.trim() &&
+        (profile as any).date_of_birth
+      );
 
       const enriched = rules.map((rule: any) => {
         const timesEarned = txns
@@ -108,7 +113,16 @@ Deno.serve(async (req: Request) => {
           : 0;
 
         const maxTimes = rule.max_times_per_customer;
-        const isCompleted = maxTimes !== null && timesEarned >= maxTimes;
+
+        // For profile_complete: use direct field-presence check so the widget
+        // correctly shows "✓ Claimed" even when the transaction INSERT failed
+        // (the balance update still succeeded, member genuinely completed profile).
+        let isCompleted: boolean;
+        if (rule.rule_type === "profile_complete") {
+          isCompleted = profileIsComplete;
+        } else {
+          isCompleted = maxTimes !== null && timesEarned >= maxTimes;
+        }
 
         let extra: Record<string, unknown> = {};
         if (rule.rule_type === "birthday") {

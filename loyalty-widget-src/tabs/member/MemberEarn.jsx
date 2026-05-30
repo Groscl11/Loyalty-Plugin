@@ -4,12 +4,12 @@
  * Shows available actions at top with CTAs; claimed rules below.
  */
 
-import React, { useCallback } from 'react';
+import React, { useCallback, useState } from 'react';
 import { tokens, accentSoft, fmtPts } from '../../utils/tokens.js';
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from '../../utils/supabase.js';
 
 // ── Helper: Claim action/survey reward ────────────────────────────────────────
-async function handleSocialActionClaim(rule, shopDomain, onClaimSuccess) {
+async function handleSocialActionClaim(rule, shopDomain, onClaimSuccess, onShowToast) {
   try {
     // Get customer email from multiple sources
     const email = (
@@ -56,6 +56,9 @@ async function handleSocialActionClaim(rule, shopDomain, onClaimSuccess) {
     }
 
     console.log('[submit-action-reward] ✅ Success! Points awarded:', data.points_awarded);
+
+    // Show toast so the user knows points are incoming
+    onShowToast?.(`✓ +${data.points_awarded || rule.points_reward || '?'} pts on the way!`);
 
     // Open the social media link in a new window (for social/review rules)
     if (rule.rule_type === 'social' || rule.rule_type === 'review') {
@@ -137,6 +140,11 @@ function inferRuleType(rule) {
 // ── Main component ────────────────────────────────────────────────────────────
 const MemberEarn = React.memo(function MemberEarn({ data, config, setTab, openSurvey }) {
   const rawRules  = data.earnRules || data.merchant?.earnRules || [];
+  const [toast, setToast] = useState(null);
+  const showToast = useCallback((msg) => {
+    setToast(msg);
+    setTimeout(() => setToast(null), 3500);
+  }, []);
   const isLoading = data.isLoading && rawRules.length === 0;
 
   if (isLoading) {
@@ -178,8 +186,24 @@ const MemberEarn = React.memo(function MemberEarn({ data, config, setTab, openSu
   const claimed   = rawRules.filter(r =>  isVisuallyClaimed(r));
   const totalAvailable = available.reduce((sum, r) => sum + (r.points_reward || 0), 0);
 
+  const accentColor = config.accentColor || '#6366f1';
+
   return (
     <div style={{ padding: '16px 16px 24px', overflowY: 'auto', height: '100%', boxSizing: 'border-box', background: tokens.surface }}>
+      {/* Toast banner */}
+      {toast && (
+        <div style={{
+          background: accentColor, color: '#fff',
+          borderRadius: 10, padding: '10px 14px',
+          fontSize: 13, fontWeight: 600,
+          marginBottom: 14,
+          display: 'flex', alignItems: 'center', gap: 8,
+          animation: 'goselfPulse 0.3s ease',
+        }}>
+          🎉 {toast}
+        </div>
+      )}
+
       {/* Header */}
       <div style={{ marginBottom: 16 }}>
         <div style={{ fontSize: 22, fontWeight: 600, color: tokens.text, marginBottom: 4 }}>
@@ -203,10 +227,11 @@ const MemberEarn = React.memo(function MemberEarn({ data, config, setTab, openSu
           openSurvey={openSurvey}
           isClaimed={isVisuallyClaimed(rule)}
           onClaimSuccess={() => data.refetch('earn_rules')}
+          onShowToast={showToast}
         />
       ))}
 
-      {/* Claimed section */}
+      {/* Completed section */}
       {claimed.length > 0 && (
         <>
           <div style={{
@@ -214,7 +239,7 @@ const MemberEarn = React.memo(function MemberEarn({ data, config, setTab, openSu
             textTransform: 'uppercase', letterSpacing: 0.5,
             margin: '20px 0 8px',
           }}>
-            Claimed
+            Completed
           </div>
           {claimed.map(rule => (
             <EarnRuleCard
@@ -225,6 +250,7 @@ const MemberEarn = React.memo(function MemberEarn({ data, config, setTab, openSu
               openSurvey={openSurvey}
               isClaimed={true}
               onClaimSuccess={() => data.refetch('earn_rules')}
+              onShowToast={showToast}
             />
           ))}
         </>
@@ -246,7 +272,7 @@ function buildPlatformUrl(nameOrPlatform) {
 }
 
 // ── Rule Card ─────────────────────────────────────────────────────────────────
-function EarnRuleCard({ rule, config, setTab, openSurvey, isClaimed, onClaimSuccess }) {
+function EarnRuleCard({ rule, config, setTab, openSurvey, isClaimed, onClaimSuccess, onShowToast }) {
   const accentColor = config.accentColor || '#6366f1';
   const ruleType    = inferRuleType(rule);
   const icon        = getRuleIcon({ ...rule, rule_type: ruleType });
@@ -272,17 +298,17 @@ function EarnRuleCard({ rule, config, setTab, openSurvey, isClaimed, onClaimSucc
     if (ruleType === 'anniversary')      return setTab?.('profile');
     if (ruleType === 'order')            return window.open(`https://${shop}`, '_blank', 'noopener');
     if (ruleType === 'social') {
-      // Use unified submit-action-reward function; callback refreshes earn rules list
-      handleSocialActionClaim(rule, shop, onClaimSuccess);
+      // Award points first, then open the social link; toast confirms points are coming
+      handleSocialActionClaim(rule, shop, onClaimSuccess, onShowToast);
       return;
     }
     if (ruleType === 'review') {
-      // Use unified submit-action-reward function; callback refreshes earn rules list
-      handleSocialActionClaim(rule, shop, onClaimSuccess);
+      // Award points first, then open the review link; toast confirms points are coming
+      handleSocialActionClaim(rule, shop, onClaimSuccess, onShowToast);
       return;
     }
     if (ruleType === 'signup') return; // Auto-awarded on registration
-  }, [ruleType, rule, isSaved, setTab, openSurvey, onClaimSuccess]);
+  }, [ruleType, rule, isSaved, setTab, openSurvey, onClaimSuccess, onShowToast]);
 
   function ctaLabel() {
     // Date-based rules: show "✓ Saved" (not generic "✓ Claimed") so users know
@@ -339,12 +365,26 @@ function EarnRuleCard({ rule, config, setTab, openSurvey, isClaimed, onClaimSucc
             {pts}
           </div>
         )}
-        {rule.description && (
+        {/* Show description or smart fallbacks for date-based rules */}
+        {(rule.description || ruleType === 'birthday' || ruleType === 'anniversary') && (
           <div style={{
             fontSize: 11, color: tokens.textMuted, marginTop: 2,
             overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
           }}>
-            {rule.description}
+            {rule.description ||
+              (ruleType === 'birthday'    ? 'Points awarded on your birthday each year 🎂' :
+               ruleType === 'anniversary' ? 'Points awarded on your anniversary each year 💝' : '')}
+          </div>
+        )}
+        {/* Extra hint for saved date-based rules — so members know when points fire */}
+        {ruleType === 'birthday' && rule.saved_value && (
+          <div style={{ fontSize: 10, color: tokens.textMuted, marginTop: 1, fontStyle: 'italic' }}>
+            Your birthday: {new Date(rule.saved_value + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'long' })}
+          </div>
+        )}
+        {ruleType === 'anniversary' && rule.saved_value && (
+          <div style={{ fontSize: 10, color: tokens.textMuted, marginTop: 1, fontStyle: 'italic' }}>
+            Your anniversary: {new Date(rule.saved_value + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'long' })}
           </div>
         )}
       </div>
