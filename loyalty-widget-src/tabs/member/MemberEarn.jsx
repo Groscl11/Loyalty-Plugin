@@ -5,6 +5,7 @@
  */
 
 import React, { useCallback } from 'react';
+import { tokens, accentSoft, fmtPts } from '../../utils/tokens.js';
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from '../../utils/supabase.js';
 
 // ── Helper: Claim action/survey reward ────────────────────────────────────────
@@ -154,9 +155,9 @@ const MemberEarn = React.memo(function MemberEarn({ data, config, setTab, openSu
 
   if (rawRules.length === 0) {
     return (
-      <div style={{ padding: '40px 16px', textAlign: 'center', color: '#9ca3af' }}>
+      <div style={{ padding: '40px 16px', textAlign: 'center', color: tokens.textMuted }}>
         <div style={{ fontSize: 32, marginBottom: 12 }}>🌟</div>
-        <div style={{ fontSize: 14, fontWeight: 600, color: '#374151', marginBottom: 6 }}>Earn rules coming soon</div>
+        <div style={{ fontSize: 14, fontWeight: 600, color: tokens.text, marginBottom: 6 }}>Earn rules coming soon</div>
         <div style={{ fontSize: 12 }}>Your merchant hasn&apos;t set up earning rules yet. Check back shortly.</div>
       </div>
     );
@@ -164,16 +165,20 @@ const MemberEarn = React.memo(function MemberEarn({ data, config, setTab, openSu
 
   const available = rawRules.filter(r => !r.is_completed);
   const claimed   = rawRules.filter(r =>  r.is_completed);
+  const totalAvailable = available.reduce((sum, r) => sum + (r.points_reward || 0), 0);
 
   return (
-    <div style={{ padding: '16px 16px 24px', overflowY: 'auto', height: '100%', boxSizing: 'border-box' }}>
+    <div style={{ padding: '16px 16px 24px', overflowY: 'auto', height: '100%', boxSizing: 'border-box', background: tokens.surface }}>
       {/* Header */}
-      <div style={{ marginBottom: 14 }}>
-        <div style={{ fontWeight: 700, fontSize: 15, color: '#111827' }}>
-          Ways to earn {config.pointsNoun}
+      <div style={{ marginBottom: 16 }}>
+        <div style={{ fontSize: 22, fontWeight: 600, color: tokens.text, marginBottom: 4 }}>
+          Ways to earn
         </div>
-        <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>
+        <div style={{ fontSize: 13, color: tokens.textMuted }}>
           {available.length} action{available.length !== 1 ? 's' : ''} available
+          {totalAvailable > 0 && (
+            <> · earn up to <strong style={{ color: tokens.text }}>{fmtPts(totalAvailable)} {config.pointsAbbrev || 'pts'}</strong></>
+          )}
         </div>
       </div>
 
@@ -186,6 +191,7 @@ const MemberEarn = React.memo(function MemberEarn({ data, config, setTab, openSu
           setTab={setTab}
           openSurvey={openSurvey}
           isClaimed={false}
+          onClaimSuccess={() => data.refetch('earn_rules')}
         />
       ))}
 
@@ -193,9 +199,9 @@ const MemberEarn = React.memo(function MemberEarn({ data, config, setTab, openSu
       {claimed.length > 0 && (
         <>
           <div style={{
-            fontSize: 11, fontWeight: 600, color: '#9ca3af',
-            textTransform: 'uppercase', letterSpacing: '0.06em',
-            margin: '18px 0 8px',
+            fontSize: 11, fontWeight: 700, color: tokens.textMuted,
+            textTransform: 'uppercase', letterSpacing: 0.5,
+            margin: '20px 0 8px',
           }}>
             Claimed
           </div>
@@ -207,6 +213,7 @@ const MemberEarn = React.memo(function MemberEarn({ data, config, setTab, openSu
               setTab={setTab}
               openSurvey={openSurvey}
               isClaimed={true}
+              onClaimSuccess={() => data.refetch('earn_rules')}
             />
           ))}
         </>
@@ -228,7 +235,7 @@ function buildPlatformUrl(nameOrPlatform) {
 }
 
 // ── Rule Card ─────────────────────────────────────────────────────────────────
-function EarnRuleCard({ rule, config, setTab, openSurvey, isClaimed }) {
+function EarnRuleCard({ rule, config, setTab, openSurvey, isClaimed, onClaimSuccess }) {
   const accentColor = config.accentColor || '#6366f1';
   const ruleType    = inferRuleType(rule);
   const icon        = getRuleIcon({ ...rule, rule_type: ruleType });
@@ -254,17 +261,17 @@ function EarnRuleCard({ rule, config, setTab, openSurvey, isClaimed }) {
     if (ruleType === 'anniversary')      return setTab?.('profile');
     if (ruleType === 'order')            return window.open(`https://${shop}`, '_blank', 'noopener');
     if (ruleType === 'social') {
-      // Use unified submit-action-reward function
-      handleSocialActionClaim(rule, shop);
+      // Use unified submit-action-reward function; callback refreshes earn rules list
+      handleSocialActionClaim(rule, shop, onClaimSuccess);
       return;
     }
     if (ruleType === 'review') {
-      // Use unified submit-action-reward function
-      handleSocialActionClaim(rule, shop);
+      // Use unified submit-action-reward function; callback refreshes earn rules list
+      handleSocialActionClaim(rule, shop, onClaimSuccess);
       return;
     }
     if (ruleType === 'signup') return; // Auto-awarded on registration
-  }, [ruleType, rule, isSaved, setTab, openSurvey]);
+  }, [ruleType, rule, isSaved, setTab, openSurvey, onClaimSuccess]);
 
   function ctaLabel() {
     if (isSaved)                              return '✓ Claimed';
@@ -280,63 +287,70 @@ function EarnRuleCard({ rule, config, setTab, openSurvey, isClaimed }) {
 
   return (
     <div style={{
-      display: 'flex',
-      alignItems: 'center',
-      gap: 12,
-      padding: '12px 14px',
-      border: `1px solid ${isClaimed ? '#f3f4f6' : '#e5e7eb'}`,
-      borderRadius: 12,
-      marginBottom: 8,
-      background: isClaimed ? '#fafafa' : '#fff',
-      opacity: isClaimed ? 0.7 : 1,
+      display: 'flex', alignItems: 'center', gap: 12,
+      padding: 14,
+      background: tokens.surface,
+      border: `1px solid ${tokens.border}`,
+      borderRadius: tokens.radiusLg,
+      marginBottom: 10,
+      opacity: isClaimed ? 0.55 : 1,
       transition: 'opacity 0.15s',
+      position: 'relative',
     }}>
-      <span style={{ fontSize: 24, width: 32, textAlign: 'center', flexShrink: 0 }}>{icon}</span>
+      <div style={{
+        width: 40, height: 40, borderRadius: 10,
+        background: accentSoft(accentColor),
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        fontSize: 22, flexShrink: 0,
+      }}>
+        {icon}
+      </div>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontWeight: 600, fontSize: 13, color: '#111827' }}>{name}</div>
+        <div style={{ fontWeight: 600, fontSize: 14, color: tokens.text }}>{name}</div>
+        {rule.featured && !isClaimed && (
+          <span style={{
+            display: 'inline-block', marginTop: 4, marginRight: 6,
+            background: tokens.warning, color: '#fff',
+            fontSize: 10, fontWeight: 700, borderRadius: 999,
+            padding: '2px 8px', textTransform: 'uppercase', letterSpacing: 0.5,
+          }}>
+            Popular
+          </span>
+        )}
+        {pts && (
+          <div style={{ fontSize: 12, color: tokens.successText, fontWeight: 600, marginTop: 4 }}>
+            {pts}
+          </div>
+        )}
         {rule.description && (
           <div style={{
-            fontSize: 11, color: '#6b7280', marginTop: 1,
+            fontSize: 11, color: tokens.textMuted, marginTop: 2,
             overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
           }}>
             {rule.description}
           </div>
         )}
-        {pts && (
-          <div style={{ fontSize: 12, color: '#16a34a', fontWeight: 600, marginTop: 2 }}>
-            {pts}
-          </div>
-        )}
       </div>
-
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-end', flexShrink: 0 }}>
-        {rule.featured && !isClaimed && (
-          <span style={{
-            background: '#f59e0b', color: '#fff',
-            fontSize: 9, fontWeight: 700, borderRadius: 4,
-            padding: '2px 6px', textTransform: 'uppercase',
-          }}>
-            Popular
-          </span>
-        )}
-        <button
-          onClick={handleAction}
-          disabled={isSaved}
-          style={{
-            background: isSaved ? '#f0fdf4' : accentColor,
-            color:      isSaved ? '#16a34a' : '#fff',
-            border:     isSaved ? '1px solid #bbf7d0' : 'none',
-            borderRadius: 8,
-            padding: '6px 12px',
-            fontSize: 12,
-            fontWeight: 600,
-            cursor: isSaved ? 'default' : 'pointer',
-            whiteSpace: 'nowrap',
-          }}
-        >
-          {ctaLabel()}
-        </button>
-      </div>
+      <button
+        onClick={handleAction}
+        disabled={isSaved}
+        style={{
+          background: isSaved ? tokens.successSoft : accentSoft(accentColor),
+          color:      isSaved ? tokens.successText : accentColor,
+          border:     isSaved ? `1px solid ${tokens.successText}33` : 'none',
+          borderRadius: tokens.radiusMd,
+          padding: '8px 14px',
+          fontSize: 13,
+          fontWeight: 600,
+          cursor: isSaved ? 'default' : 'pointer',
+          whiteSpace: 'nowrap', flexShrink: 0,
+          transition: 'background 0.15s, color 0.15s',
+        }}
+        onMouseEnter={(e) => { if (!isSaved) { e.target.style.background = accentColor; e.target.style.color = '#fff'; } }}
+        onMouseLeave={(e) => { if (!isSaved) { e.target.style.background = accentSoft(accentColor); e.target.style.color = accentColor; } }}
+      >
+        {ctaLabel()}
+      </button>
     </div>
   );
 }
