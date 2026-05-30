@@ -16,7 +16,7 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { cacheGet, cacheSet, invalidateCustomerSession } from '../utils/sessionCache.js';
+import { cacheGet, cacheSet, cacheClear, invalidateCustomerSession } from '../utils/sessionCache.js';
 import { useRealtimeSubscription } from './useRealtime.js';
 
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from '../utils/supabase.js';
@@ -193,6 +193,9 @@ async function fetchCustomerSession(shopDomain, customerEmail) {
     pointsBalance:    data.points_balance ?? data.pointsBalance ?? 0,
     lifetimeEarned:   data.lifetime_points_earned   ?? 0,
     lifetimeRedeemed: data.lifetime_points_redeemed ?? 0,
+    // True once first bonus is claimed or any points are earned. Used to gate
+    // the new-member Welcome screen — see MemberWelcome.jsx.
+    welcomeBonusClaimed: data.welcome_bonus_claimed ?? true,
     tier:             (data.tier?.name   || data.tier || 'bronze').toLowerCase(),
     referralCode:     data.referral_code  || data.referralCode  || null,
     referralUrl:      (data.referral_code || data.referralCode)
@@ -227,6 +230,7 @@ async function fetchMerchantConfig(shopDomain, customerData) {
   let tierThresholdsFromApi = raw.tier_thresholds || customerData?.tierThresholds || null;
 
   // For guests (no customer session), fetch program/tier config from backend
+  let guestOrganizationName = null;
   if (!tierThresholdsFromApi && shopDomain) {
     try {
       const guestConfig = await apiFetch(
@@ -235,16 +239,19 @@ async function fetchMerchantConfig(shopDomain, customerData) {
       if (guestConfig?.tier_thresholds) {
         tierThresholdsFromApi = guestConfig.tier_thresholds;
       }
+      if (guestConfig?.organization_name) {
+        guestOrganizationName = guestConfig.organization_name;
+      }
     } catch (e) {
       console.warn('[GoSelf] guest tier config fetch failed:', e.message);
     }
   }
 
   const result = {
-    storeName:      shopDomain.replace('.myshopify.com', ''),
+    storeName:      raw.organization_name || guestOrganizationName || shopDomain.replace('.myshopify.com', ''),
     isAdmin:        raw.is_admin ?? false,
     pointsPerRupee: customerData?.pointsEarnRate ?? 1,
-    earnRules:      earnRulesFromApi || MOCK_EARN_RULES,
+    earnRules:      Array.isArray(earnRulesFromApi) ? earnRulesFromApi : [],
     redeemCatalog:  MOCK_CATALOG,
     partnerBrands:  MOCK_PARTNER_BRANDS,
     tierThresholds: tierThresholdsFromApi || {
@@ -253,6 +260,8 @@ async function fetchMerchantConfig(shopDomain, customerData) {
       gold:     5000,
       platinum: 10000,
     },
+    // Wallet voucher display style — set by client in portal, default 'chips'
+    walletVoucherStyle: raw.wallet_voucher_style || null,
     // Feature flags — read from backend raw data when present, default to true
     showReferTab:       raw.show_refer_tab       ?? true,
     showLeaderboard:    raw.show_leaderboard     ?? true,
@@ -285,17 +294,20 @@ async function fetchEarnRules(shopDomain, customerId) {
     const data = await apiFetch(
       `${SUPABASE_URL}/functions/v1/get-earning-rules?${params}`
     );
-    const rules = data.rules;
-    if (rules && rules.length > 0) {
-      cacheSet(cacheKey, rules);
-      return rules;
+    // If the API responds (even with empty rules), use what it returns.
+    // Never fall back to mock data — an empty array means no rules configured,
+    // and the UI should show "Earn rules coming soon" rather than fake actions.
+    if (Array.isArray(data.rules)) {
+      cacheSet(cacheKey, data.rules);
+      return data.rules;
     }
   } catch (e) {
-    console.warn('[GoSelf] get-earning-rules failed, using mock:', e.message);
+    console.warn('[GoSelf] get-earning-rules failed:', e.message);
   }
 
-  cacheSet(cacheKey, MOCK_EARN_RULES);
-  return MOCK_EARN_RULES;
+  // Network/parse error only — return empty so UI shows "coming soon" state
+  cacheSet(cacheKey, []);
+  return [];
 }
 
 // ---------------------------------------------------------------------------
@@ -321,73 +333,89 @@ async function fetchMemberRewards(shopDomain, customerEmail, customerId) {
     const storeDiscounts     = rawDiscounts.filter(r => r.offer_type === 'store_discount');
     const marketplaceDiscounts = rawDiscounts.filter(r => r.offer_type !== 'store_discount');
 
-    // Copy existingCodes for marketplace items into existingBrandCodes so
-    // the Partners tab can detect already-claimed codes
     const rawExistingCodes = data.existing_codes || {};
-    const mergedBrandCodes = { ...(data.existing_brand_codes || {}) };
-    for (const r of marketplaceDiscounts) {
-      if (rawExistingCodes[r.id]) mergedBrandCodes[r.id] = rawExistingCodes[r.id];
-    }
+    // existingBrandCodes = ALL codes ever claimed by this member (any offer_id in offer_codes).
+    // Starting from rawExistingCodes (not just active brand_rewards) ensures partner rewards
+    // still show "✓ Claimed" even when claimed via a campaign, a different access_type,
+    // or an offer whose distribution has since been updated/deactivated.
+    const mergedBrandCodes = { ...rawExistingCodes, ...(data.existing_brand_codes || {}) };
 
     const result = {
       discountRewards: storeDiscounts.map(r => ({
-        id:            r.offer_id || r.distribution_id,
-        type:          'discount',
-        title:         r.title,
-        description:   r.description || null,
-        pointsCost:    r.points_cost,
-        discountValue: r.discount_value || '',
-        canRedeem:     r.can_redeem ?? true,
-        minPurchase:   r.min_purchase_amount || null,
-        currency:      r.currency || null,
-        terms:         r.terms_conditions || null,
+        id:             r.offer_id || r.id || r.distribution_id,
+        type:           'discount',
+        title:          r.title,
+        description:    r.description || null,
+        pointsCost:     r.points_cost,
+        discountValue:  r.discount_value || '',
+        canRedeem:      r.can_redeem ?? true,
+        minPurchase:    r.min_purchase_amount || null,
+        currency:       r.currency || null,
+        terms:          r.terms_conditions || null,
+        // Fall back to description — older offers stored steps there before steps_to_redeem column existed
+        stepsToRedeem:  r.steps_to_redeem  || r.description || null,
+        redemptionLink: r.redemption_link  || null,
+        imageUrl:       r.image_url        || null,
+        ownerName:      r.owner_name       || null,
       })),
       brandRewards: [
         // partner_voucher brand rewards from the backend
         ...(data.brand_rewards || []).map(r => ({
-          id:            r.distribution_id,
-          rewardId:      r.offer_id,
-          type:          'partner',
-          title:         r.title,
-          description:   r.description || r.value_description || null,
-          pointsCost:    r.points_cost,
-          discountValue: r.value_description || '',
-          canRedeem:     r.can_redeem ?? true,
-          brandName:     r.brand_name  || null,
-          brandLogo:     r.brand_logo  || null,
-          brandUrl:      r.brand_website_url || null,
-          imageUrl:      r.image_url   || null,
-          couponType:    r.coupon_type || 'unique',
-          genericCode:   r.generic_coupon_code || null,
-          terms:         r.terms_conditions || null,
+          id:             r.config_id || r.distribution_id,
+          rewardId:       r.reward_id || r.offer_id,
+          type:           'partner',
+          title:          r.title,
+          description:    r.description || r.value_description || null,
+          pointsCost:     r.points_cost,
+          discountValue:  r.value_description || '',
+          canRedeem:      r.can_redeem ?? true,
+          brandName:      r.brand_name  || null,
+          brandLogo:      r.brand_logo  || null,
+          brandUrl:       r.brand_website_url || null,
+          imageUrl:       r.image_url   || null,
+          couponType:     r.coupon_type || 'unique',
+          genericCode:    r.generic_coupon_code || null,
+          terms:          r.terms_conditions || null,
+          // Fall back to description — older offers stored steps there before steps_to_redeem column existed
+          stepsToRedeem:  r.steps_to_redeem  || r.description || null,
+          redemptionLink: r.redemption_link  || null,
+          ownerName:      r.owner_name       || null,
         })),
         // marketplace_offer rewards also appear in the Partners tab
         ...marketplaceDiscounts.map(r => ({
-          id:            r.distribution_id,
-          rewardId:      r.offer_id,
-          type:          'partner',
-          title:         r.title,
-          description:   r.description || null,
-          pointsCost:    r.points_cost,
-          discountValue: r.discount_value || '',
-          canRedeem:     r.can_redeem ?? true,
-          brandName:     null,
-          brandLogo:     null,
-          brandUrl:      null,
-          imageUrl:      null,
-          couponType:    r.coupon_type || 'unique',
-          genericCode:   r.generic_coupon_code || null,
-          terms:         r.terms_conditions || null,
+          id:             r.distribution_id,
+          rewardId:       r.id,
+          type:           'partner',
+          title:          r.title,
+          description:    r.description || null,
+          pointsCost:     r.points_cost,
+          discountValue:  r.discount_value || '',
+          canRedeem:      r.can_redeem ?? true,
+          brandName:      null,
+          brandLogo:      null,
+          brandUrl:       null,
+          imageUrl:       r.image_url        || null,
+          couponType:     r.coupon_type || 'unique',
+          genericCode:    r.generic_coupon_code || null,
+          terms:          r.terms_conditions || null,
+          // Fall back to description — older offers stored steps there before steps_to_redeem column existed
+          stepsToRedeem:  r.steps_to_redeem  || r.description || null,
+          redemptionLink: r.redemption_link  || null,
+          ownerName:      r.owner_name       || null,
         })),
       ],
       manualRewards: (data.manual_rewards || []).map(r => ({
-        id:          r.id,
-        type:        'free',
-        title:       r.title,
-        description: r.description || null,
-        pointsCost:  r.points_cost,
-        canRedeem:   r.can_redeem ?? true,
-        terms:       r.terms_conditions || null,
+        id:             r.id,
+        type:           'free',
+        title:          r.title,
+        description:    r.description || null,
+        pointsCost:     r.points_cost,
+        canRedeem:      r.can_redeem ?? true,
+        terms:          r.terms_conditions || null,
+        // Fall back to description — older offers stored steps there before steps_to_redeem column existed
+        stepsToRedeem:  r.steps_to_redeem  || r.description || null,
+        redemptionLink: r.redemption_link  || null,
+        imageUrl:       r.image_url        || null,
       })),
       existingCodes:      rawExistingCodes,
       existingBrandCodes: mergedBrandCodes,
@@ -822,9 +850,10 @@ export function useCustomerData() {
         }
       }
 
-      // member_rewards refetch — re-fetch with current customer id
+      // member_rewards refetch — clear cache first so fresh data is fetched
       if (domain === 'member_rewards' && customerEmail) {
         try {
+          cacheClear('member_rewards');
           const cachedCustomer = cacheGet('customer_session_v2') || cacheGet('customer_session');
           const rewardsData = await fetchMemberRewards(
             shopDomain,

@@ -153,7 +153,7 @@ Deno.serve(async (req: Request) => {
       .select('id')
       .eq('member_user_id', memberUserId)
       .eq('transaction_type', 'bonus')
-      .contains('metadata', JSON.stringify({ rule_id: rule.id }))
+      .filter('metadata->>rule_id', 'eq', rule.id)
       .limit(1)
       .maybeSingle();
 
@@ -257,7 +257,6 @@ Deno.serve(async (req: Request) => {
         points_amount: REWARD_POINTS,
         balance_after: newBalance,
         description: description,
-        reference_type: 'earning_rule',
         reference_id: rule.id,
         metadata: metadata,
         created_at: new Date().toISOString(),
