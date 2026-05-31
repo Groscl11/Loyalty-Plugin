@@ -1,0 +1,76 @@
+api_version = "2025-07"
+
+[[extensions]]
+
+uid = "c7f2e4d1-a8b3-4c65-9e71-2f4d6a8b0c1e"
+
+type = "ui_extension"
+name = "Instant Post-Purchase Rewards"
+handle = "instant-thankyou-widget"
+
+[[extensions.targeting]]
+module = "./src/ThankYou.jsx"
+target = "purchase.thank-you.block.render"
+
+[extensions.capabilities]
+network_access = true
+api_access = true
+
+[extensions.settings]
+[[extensions.settings.fields]]
+key = "campaign_id"
+type = "single_line_text_field"
+name = "Campaign ID"
+description = "The GoSelf Instant Reward Campaign ID. Find it in GoSelf Admin → Campaigns (must be an Instant Reward Campaign type)."
+
+[[extensions.settings.fields]]
+key = "banner_body"
+type = "multi_line_text_field"
+name = "Banner Message"
+description = "Message shown to the customer. e.g. 'Unlock Huge Savings! Grab your exclusive voucher and get up to 80% Off from our Partner brands.'"
+
+[[extensions.settings.fields]]
+key = "button_text"
+type = "single_line_text_field"
+name = "Button Label"
+description = "Text on the Claim button. Default: Claim Now"
+
+[[extensions.settings.fields]]
+key = "template"
+type = "single_line_text_field"
+name = "Layout Template"
+description = "inline = icon + text + button in a row (default) · banner = coloured card with full-width button · minimal = plain stacked text + button"
+
+[[extensions.settings.fields.validations]]
+name = "choices"
+value = '["inline", "banner", "minimal"]'
+
+[[extensions.settings.fields]]
+key = "banner_tone"
+type = "single_line_text_field"
+name = "Banner Colour"
+description = "Colour of the card (used when template is banner). Ignored for inline and minimal."
+
+[[extensions.settings.fields.validations]]
+name = "choices"
+value = '["success", "info", "warning"]'
+
+[[extensions.settings.fields]]
+key = "button_style"
+type = "single_line_text_field"
+name = "Button Style"
+description = "primary = filled (theme colour, default) · secondary = outlined · plain = text link"
+
+[[extensions.settings.fields.validations]]
+name = "choices"
+value = '["primary", "secondary", "plain"]'
+
+[[extensions.settings.fields]]
+key = "text_alignment"
+type = "single_line_text_field"
+name = "Text Alignment"
+description = "Alignment of all content within the block"
+
+[[extensions.settings.fields.validations]]
+name = "choices"
+value = '["start", "center", "end"]'
