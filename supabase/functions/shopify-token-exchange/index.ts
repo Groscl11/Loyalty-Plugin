@@ -21,7 +21,6 @@
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
-import { encryptToken } from "../_shared/token-crypto.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*", // embedded bootstrap may be served from the shop/admin origin
@@ -156,8 +155,14 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    // ── 4. Upsert the installation (token encrypted at rest) ─────────────────
-    const encryptedToken = await encryptToken(accessToken).catch(() => accessToken);
+    // ── 4. Upsert the installation ───────────────────────────────────────────
+    // Store the token PLAINTEXT to match existing installs: every consumer
+    // (shopify-fetch-discounts, discount creation, webhooks) reads access_token
+    // raw and calls Shopify with it. Encrypting here (enc:v1:) makes Shopify
+    // reject the blob → "connection expired". The table is RLS-locked to
+    // service_role (security C-01), so plaintext-at-rest is acceptable until
+    // consumers are updated to decryptToken().
+    const storedToken = accessToken;
 
     // On re-open we refresh the token + activity only — never overwrite the original
     // installed_at, billing, or app_settings, and don't reset webhooks_registered.
@@ -166,7 +171,7 @@ Deno.serve(async (req: Request) => {
       shop_name: storeName, shop_email: fallbackEmail,
       installation_status: "active",
       last_active_at: new Date().toISOString(),
-      access_token: encryptedToken, shopify_access_token: encryptedToken,
+      access_token: storedToken, shopify_access_token: storedToken,
       api_version: "2025-01", scopes,
     };
     if (!isReopen) {

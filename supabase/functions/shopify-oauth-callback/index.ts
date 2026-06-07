@@ -14,7 +14,6 @@
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
-import { encryptToken } from '../_shared/token-crypto.ts';
 
 const DASHBOARD_URL_ENV  = Deno.env.get('DASHBOARD_URL')?.trim()  || '';
 const APP_URL_ENV        = Deno.env.get('APP_URL')?.trim()        || '';
@@ -144,10 +143,13 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    // ── 5. Upsert installation (C-03: encrypt access token before storing) ────
-    // encryptToken() is a no-op if ACCESS_TOKEN_ENCRYPTION_KEY is not set,
-    // so it's safe to call unconditionally — it degrades to plaintext storage.
-    const encryptedToken = await encryptToken(accessToken).catch(() => accessToken);
+    // ── 5. Upsert installation ────────────────────────────────────────────────
+    // Store the token PLAINTEXT: all consumers (shopify-fetch-discounts, discount
+    // creation, webhooks) read access_token raw and call Shopify with it. Encrypting
+    // (enc:v1:) makes Shopify reject the blob → "connection expired". The table is
+    // RLS-locked to service_role (security C-01). Re-enable encryption only once all
+    // consumers call decryptToken().
+    const storedToken = accessToken;
 
     const { data: installation, error: installErr } = await supabase
       .from('store_installations')
@@ -156,7 +158,7 @@ Deno.serve(async (req: Request) => {
         shop_name: storeName, shop_email: fallbackEmail,
         installation_status: 'active',
         installed_at: new Date().toISOString(), last_active_at: new Date().toISOString(),
-        access_token: encryptedToken, shopify_access_token: encryptedToken,
+        access_token: storedToken, shopify_access_token: storedToken,
         api_version: '2025-01', scopes, // C-02: shopify_api_secret must never be persisted to DB
         webhooks_registered: false, billing_plan: 'free', billing_status: 'active',
         app_settings: { auto_create_members: true, auto_assign_rewards: true, email_notifications: true },
