@@ -4,6 +4,18 @@
 # working directory name when running `supabase init`.
 project_id = "Loyalty-Plugin"
 
+# Shopify webhooks send no Supabase JWT — verification is done in-function via
+# HMAC against SHOPIFY_API_SECRET. Keep gateway JWT verification OFF, otherwise
+# the gateway rejects deliveries with 401 before the function runs.
+[functions.shopify-order-webhook]
+verify_jwt = false
+
+# Managed-install token exchange is called by the embedded bootstrap page with a
+# Shopify session token (not a Supabase JWT). The function verifies that session
+# token in-code, so the gateway JWT check must be OFF or it 401s before we run.
+[functions.shopify-token-exchange]
+verify_jwt = false
+
 [api]
 enabled = true
 # Port to use for the API URL.

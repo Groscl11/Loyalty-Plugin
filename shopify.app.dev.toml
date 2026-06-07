@@ -4,8 +4,12 @@
 
 client_id = "863caa8c8eff3c0fbb3ef53589e5ccee"
 name = "Loyalty by Goself (Dev)"
-application_url = "https://dev.app.goself.in"
-embedded = false
+# App URL points at the embedded managed-install bootstrap. On install/open Shopify
+# loads this embedded with a session token (id_token); the page exchanges it for an
+# access token (shopify-token-exchange), persists the install, then breaks out to SSO.
+application_url = "https://dev.app.goself.in/shopify/install"
+# embedded = true is REQUIRED for App Bridge / session tokens used by token exchange.
+embedded = true
 
 [webhooks]
 api_version = "2026-01"
@@ -14,8 +18,14 @@ api_version = "2026-01"
   topics = ["orders/create", "orders/paid"]
   uri = "https://jblqyvicxhmqqjhostcj.supabase.co/functions/v1/shopify-order-webhook"
 
+# GDPR mandatory compliance webhooks (required for Shopify App Store submission)
+[webhooks.privacy_compliance]
+  customer_data_request_url = "https://jblqyvicxhmqqjhostcj.supabase.co/functions/v1/shopify-customers-data-request"
+  customer_deletion_url     = "https://jblqyvicxhmqqjhostcj.supabase.co/functions/v1/shopify-customers-redact"
+  shop_deletion_url         = "https://jblqyvicxhmqqjhostcj.supabase.co/functions/v1/shopify-shop-redact"
+
 [access_scopes]
-scopes = "read_customers,read_orders,read_discounts,write_discounts"
+scopes = "read_customers,read_orders,read_discounts,write_discounts,read_price_rules,write_price_rules"
 optional_scopes = []
 use_legacy_install_flow = false
 
@@ -39,19 +49,12 @@ directory = "extensions/points-earned"
 
 [[extensions]]
 type = "ui_extension"
-name = "Order Rewards & Referral"
-handle = "order-rewards"
-directory = "extensions/order-rewards"
+name = "Post Purchase Rewards"
+handle = "campaign-reward-banner"
+directory = "extensions/campaign-reward-banner"
 
-# Uncomment when referral-widget and campaign-reward-banner network access is approved:
-# [[extensions]]
-# type = "ui_extension"
-# name = "Referral Widget"
-# handle = "referral-widget"
-# directory = "extensions/referral-widget"
-#
-# [[extensions]]
-# type = "ui_extension"
-# name = "Campaign Reward Banner"
-# handle = "campaign-reward-banner"
-# directory = "extensions/campaign-reward-banner"
+[[extensions]]
+type = "ui_extension"
+name = "Referral Widget"
+handle = "referral-widget"
+directory = "extensions/referral-widget"

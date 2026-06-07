@@ -1,29 +1,26 @@
 # Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
 
 client_id = "3290e6e4e5cb6711e4a7876ef40f87e8"
-name = " Loyalty by Goself"
-application_url = "https://ai.goself.in"
-embedded = false
+name = "Loyalty by Goself"
+# Embedded managed-install bootstrap (see shopify-token-exchange + /shopify/install).
+application_url = "https://ai.goself.in/shopify/install"
+# embedded = true REQUIRED for App Bridge session tokens used by token exchange.
+embedded = true
 
 [webhooks]
 api_version = "2026-01"
 
+# H-17: all 5 topics declared so they survive reinstall without relying solely
+# on programmatic registration in the OAuth callback
 [[webhooks.subscriptions]]
-  topics = ["orders/create", "orders/paid"]
+  topics = ["orders/create", "orders/paid", "orders/updated", "customers/create", "customers/update"]
   uri = "https://lizgppzyyljqbmzdytia.supabase.co/functions/v1/shopify-order-webhook"
 
-  # GDPR mandatory webhooks (required for Shopify App Store submission)
-  [[webhooks.subscriptions]]
-  topics = ["customers/data_request"]
-  uri = "https://lizgppzyyljqbmzdytia.supabase.co/functions/v1/shopify-customers-data-request"
-
-  [[webhooks.subscriptions]]
-  topics = ["customers/redact"]
-  uri = "https://lizgppzyyljqbmzdytia.supabase.co/functions/v1/shopify-customers-redact"
-
-  [[webhooks.subscriptions]]
-  topics = ["shop/redact"]
-  uri = "https://lizgppzyyljqbmzdytia.supabase.co/functions/v1/shopify-shop-redact"
+# GDPR mandatory compliance webhooks (required for Shopify App Store submission)
+[webhooks.privacy_compliance]
+  customer_data_request_url = "https://lizgppzyyljqbmzdytia.supabase.co/functions/v1/shopify-customers-data-request"
+  customer_deletion_url     = "https://lizgppzyyljqbmzdytia.supabase.co/functions/v1/shopify-customers-redact"
+  shop_deletion_url         = "https://lizgppzyyljqbmzdytia.supabase.co/functions/v1/shopify-shop-redact"
 
 [access_scopes]
 # Minimal scopes required for loyalty program functionality:
@@ -31,7 +28,7 @@ api_version = "2026-01"
 #   read_orders     — receive order webhooks and read order history
 #   read_discounts  — check existing discount codes before issuing rewards
 #   write_discounts — create discount codes for point redemptions
-scopes = "read_customers,read_orders,read_discounts,write_discounts"
+scopes = "read_customers,read_orders,read_discounts,write_discounts,read_price_rules,write_price_rules"
 optional_scopes = []
 use_legacy_install_flow = false
 
@@ -60,6 +57,6 @@ directory = "extensions/points-earned"
 
 [[extensions]]
 type = "ui_extension"
-name = "Order Rewards & Referral"
-handle = "order-rewards"
-directory = "extensions/order-rewards"
+name = "Post Purchase Rewards"
+handle = "campaign-reward-banner"
+directory = "extensions/campaign-reward-banner"
