@@ -14,6 +14,7 @@
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
+import { encryptToken } from '../_shared/token-crypto.ts';
 
 const DASHBOARD_URL_ENV  = Deno.env.get('DASHBOARD_URL')?.trim()  || '';
 const APP_URL_ENV        = Deno.env.get('APP_URL')?.trim()        || '';
@@ -144,12 +145,11 @@ Deno.serve(async (req: Request) => {
     }
 
     // ── 5. Upsert installation ────────────────────────────────────────────────
-    // Store the token PLAINTEXT: all consumers (shopify-fetch-discounts, discount
-    // creation, webhooks) read access_token raw and call Shopify with it. Encrypting
-    // (enc:v1:) makes Shopify reject the blob → "connection expired". The table is
-    // RLS-locked to service_role (security C-01). Re-enable encryption only once all
-    // consumers call decryptToken().
-    const storedToken = accessToken;
+    // Encrypt at rest. encryptToken() is FLAG-GATED (plaintext unless
+    // ENCRYPT_ACCESS_TOKENS=true), so this ships safely before the flag is flipped.
+    // All consumers now decryptToken() (a no-op for plaintext). Table is also
+    // RLS-locked to service_role (security C-01).
+    const storedToken = await encryptToken(accessToken);
 
     const { data: installation, error: installErr } = await supabase
       .from('store_installations')

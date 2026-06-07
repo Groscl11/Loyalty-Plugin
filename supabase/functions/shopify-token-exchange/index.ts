@@ -21,6 +21,7 @@
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
+import { encryptToken } from "../_shared/token-crypto.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*", // embedded bootstrap may be served from the shop/admin origin
@@ -112,7 +113,7 @@ Deno.serve(async (req: Request) => {
         .maybeSingle();
       if (existing) {
         const link = await issueMagicLink(supabase, existing.shop_email, existing.shop_owner || existing.shop_name || shop, shop, existing.client_id, appUrlHint);
-        if (link) return json({ success: true, redirect: link });
+        if (link) return json({ success: true, redirect: await toBreakoutUrl(supabase, link) });
       }
       console.error(`[token-exchange] exchange failed: ${exchangeRes.status}`);
       return json({ success: false, error: "Token exchange failed" }, 502);
@@ -156,13 +157,12 @@ Deno.serve(async (req: Request) => {
     }
 
     // ── 4. Upsert the installation ───────────────────────────────────────────
-    // Store the token PLAINTEXT to match existing installs: every consumer
-    // (shopify-fetch-discounts, discount creation, webhooks) reads access_token
-    // raw and calls Shopify with it. Encrypting here (enc:v1:) makes Shopify
-    // reject the blob → "connection expired". The table is RLS-locked to
-    // service_role (security C-01), so plaintext-at-rest is acceptable until
-    // consumers are updated to decryptToken().
-    const storedToken = accessToken;
+    // Encrypt the token at rest. encryptToken() is FLAG-GATED — it stores plaintext
+    // unless ENCRYPT_ACCESS_TOKENS=true, so this is safe to ship before flipping the
+    // flag. Every consumer now calls decryptToken() (a no-op for plaintext), so once
+    // all consumers are deployed the flag can be turned on. The table is also
+    // RLS-locked to service_role (security C-01).
+    const storedToken = await encryptToken(accessToken);
 
     // On re-open we refresh the token + activity only — never overwrite the original
     // installed_at, billing, or app_settings, and don't reset webhooks_registered.
@@ -231,7 +231,7 @@ Deno.serve(async (req: Request) => {
     }
 
     console.log(`[token-exchange] install + SSO ready for ${shop}`);
-    return json({ success: true, redirect: magicLink });
+    return json({ success: true, redirect: await toBreakoutUrl(supabase, magicLink) });
 
   } catch (err: any) {
     console.error("[token-exchange] Unhandled error:", err?.message ?? err);
@@ -240,6 +240,28 @@ Deno.serve(async (req: Request) => {
 });
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
+
+/**
+ * Convert a Supabase magic link into a one-time breakout URL.
+ * Stores the magic link behind a single-use, 2-minute code; the bootstrap breaks
+ * out to /shopify-sso-redirect?code=… which 302s to the magic link server-side.
+ * The magic link (a credential) therefore never appears in our response body / JS.
+ */
+async function toBreakoutUrl(supabase: any, magicLink: string): Promise<string> {
+  const expiresAt = new Date(Date.now() + 2 * 60 * 1000).toISOString();
+  const { data, error } = await supabase
+    .from("sso_breakout_codes")
+    .insert({ magic_link: magicLink, expires_at: expiresAt })
+    .select("code")
+    .single();
+  if (error || !data?.code) {
+    // Fallback: if the code table is unavailable, return the magic link directly
+    // (degrades to prior behaviour rather than blocking the install).
+    console.error("[token-exchange] breakout code insert failed:", error?.message);
+    return magicLink;
+  }
+  return `${Deno.env.get("SUPABASE_URL")}/functions/v1/shopify-sso-redirect?code=${data.code}`;
+}
 
 function resolveSafeDashboardUrl(hint?: string): string {
   const allowed = [DASHBOARD_URL_ENV, APP_URL_ENV, ...ALLOWED_APP_URLS, ...DEFAULT_ALLOWED]

@@ -32,6 +32,11 @@ async function getKey(): Promise<CryptoKey> {
 
 export async function encryptToken(plaintext: string): Promise<string> {
   if (!plaintext || plaintext.startsWith(ENC_PREFIX)) return plaintext;
+  // Feature flag: only encrypt on write when explicitly enabled. This lets the
+  // rollout be safe & gradual — deploy ALL consumers with decryptToken() first
+  // (a no-op for plaintext), THEN set ENCRYPT_ACCESS_TOKENS=true so new writes are
+  // encrypted, THEN backfill existing rows. decryptToken() always handles both forms.
+  if (Deno.env.get('ENCRYPT_ACCESS_TOKENS') !== 'true') return plaintext;
   const key = await getKey();
   const iv = crypto.getRandomValues(new Uint8Array(12));
   const enc = new TextEncoder();

@@ -16,6 +16,14 @@ verify_jwt = false
 [functions.shopify-token-exchange]
 verify_jwt = false
 
+# Browser navigates here (GET) with a one-time code; no Supabase JWT involved.
+[functions.shopify-sso-redirect]
+verify_jwt = false
+
+# One-shot admin job; auth via X-Backfill-Secret header (BACKFILL_SECRET env).
+[functions.backfill-token-encryption]
+verify_jwt = false
+
 [api]
 enabled = true
 # Port to use for the API URL.
