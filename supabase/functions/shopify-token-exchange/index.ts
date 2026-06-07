@@ -36,7 +36,9 @@ const DEFAULT_ALLOWED   = ["https://app.goself.in", "https://dev.app.goself.in",
 
 const TOKEN_EXCHANGE_GRANT = "urn:ietf:params:oauth:grant-type:token-exchange";
 const SUBJECT_ID_TOKEN      = "urn:ietf:params:oauth:token-type:id_token";
-const REQUEST_OFFLINE_TOKEN = "urn:ietf:params:oauth:token-type:offline-access-token";
+// requested_token_type uses Shopify's OWN namespace (urn:shopify:...), NOT urn:ietf.
+// Using the ietf form makes Shopify reject the exchange (→ 502 in our handler).
+const REQUEST_OFFLINE_TOKEN = "urn:shopify:params:oauth:token-type:offline-access-token";
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
