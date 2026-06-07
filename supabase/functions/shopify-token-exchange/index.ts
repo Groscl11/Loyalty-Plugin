@@ -280,10 +280,14 @@ async function issueMagicLink(
   if (!magicLink) return null;
 
   if (userId) {
-    await supabase.from("profiles").upsert(
+    // NOTE: supabase-js v2 query builders are thenable but have NO .catch() —
+    // calling .upsert(...).catch() throws "catch is not a function". Always
+    // await + destructure the error instead.
+    const { error: pErr } = await supabase.from("profiles").upsert(
       { id: userId, email, full_name: fullName, role: "client", client_id: clientId || null },
       { onConflict: "id", ignoreDuplicates: false },
-    ).catch((e: any) => console.error("[token-exchange] profile upsert:", e.message));
+    );
+    if (pErr) console.error("[token-exchange] profile upsert:", pErr.message);
   }
   return magicLink;
 }

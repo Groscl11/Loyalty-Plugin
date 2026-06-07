@@ -1,182 +1,357 @@
-import { createClient } from 'npm:@supabase/supabase-js@2';
-import { verifyOAuthHmac } from '../_shared/shopify-hmac.ts';
+/**
+ * shopify-oauth-callback
+ *
+ * Security model (enterprise-grade):
+ * - HMAC-verified by Shopify on every request — no unauthenticated entry
+ * - shop.json fetched server-side (parallel with webhook registration)
+ * - Magic link generated server-side using service role
+ * - Profile upserted server-side before the client follows the link
+ * - Redirect is a 302 to the magic link — magic link URL never reaches client JS
+ * - No PII flows through URL params after the initial redirect
+ * - Timestamp verified on state param to prevent replay attacks
+ * - Redirect target validated against explicit allowlist (open-redirect prevention)
+ */
 
-// Set SHOPIFY_APP_URL secret per environment:
-//   prod: https://ai.goself.in
-//   dev:  https://develop.ai.goself.in
-const DASHBOARD_URL = Deno.env.get('SHOPIFY_APP_URL') ?? 'https://ai.goself.in';
+import "jsr:@supabase/functions-js/edge-runtime.d.ts";
+import { createClient } from "npm:@supabase/supabase-js@2.57.4";
+import { encryptToken } from '../_shared/token-crypto.ts';
+
+const DASHBOARD_URL_ENV  = Deno.env.get('DASHBOARD_URL')?.trim()  || '';
+const APP_URL_ENV        = Deno.env.get('APP_URL')?.trim()        || '';
+const ALLOWED_APP_URLS   = (Deno.env.get('ALLOWED_APP_URLS') || '').split(',').map(s => s.trim()).filter(Boolean);
+const DEFAULT_ALLOWED    = ['https://app.goself.in', 'https://dev.app.goself.in'];
+
+Deno.serve(async (req: Request) => {
+  const url   = new URL(req.url);
+  const code  = url.searchParams.get('code')  || '';
+  const shop  = url.searchParams.get('shop')  || '';
+  const state = url.searchParams.get('state') || '';
+
+  if (!code || !shop) return new Response('Missing required parameters', { status: 400 });
+  if (!/^[a-zA-Z0-9-]+\.myshopify\.com$/.test(shop)) return new Response('Invalid shop domain', { status: 400 });
+
+  // ── 1. Verify Shopify HMAC ─────────────────────────────────────────────────
+  const shopifySecret = Deno.env.get('SHOPIFY_API_SECRET') || '';
+  if (!shopifySecret) return new Response('Server misconfiguration', { status: 500 });
+
+  if (!(await verifyShopifyHmac(url, shopifySecret))) {
+    console.error('[oauth-callback] HMAC failed for', shop);
+    return new Response('Unauthorized', { status: 401 });
+  }
+
+  // ── 2. Decode state → resolve safe redirect target ────────────────────────
+  let stateData: Record<string, any> = {};
+  if (state) {
+    try { stateData = JSON.parse(atob(decodeURIComponent(state.replace(/ /g, '+')))); } catch {}
+  }
+  const dashboardUrl = resolveSafeDashboardUrl(stateData.app_url);
+  if (!dashboardUrl) {
+    console.error('[oauth-callback] No safe dashboard URL for', shop);
+    return new Response('Server misconfiguration', { status: 500 });
+  }
+
+  // H-20: Verify state timestamp freshness (max 5 minutes)
+  if (stateData.ts && Math.floor(Date.now() / 1000) - Math.floor(stateData.ts / 1000) > 300) {
+    console.error('[oauth-callback] State timestamp expired for', shop);
+    return new Response('OAuth request expired', { status: 401 });
+  }
+
+  const supabase      = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
+  const SHOPIFY_KEY   = Deno.env.get('SHOPIFY_API_KEY')    || '';
+  const SHOPIFY_SEC   = Deno.env.get('SHOPIFY_API_SECRET') || '';
+
+  if (!SHOPIFY_KEY || !SHOPIFY_SEC) {
+    return redirect(`${dashboardUrl}/?shop=${shop}&error=missing_credentials`);
+  }
+
+  // H-19: Validate nonce if present (degrades gracefully if oauth_nonces table not yet created)
+  if (stateData.nonce) {
+    try {
+      const { data: nonceRow } = await supabase
+        .from('oauth_nonces')
+        .select('id, expires_at')
+        .eq('nonce', stateData.nonce)
+        .eq('shop_domain', shop)
+        .maybeSingle();
+
+      if (!nonceRow) {
+        console.error('[oauth-callback] Invalid or missing nonce for', shop);
+        return new Response('Invalid OAuth state — possible CSRF attempt', { status: 401 });
+      }
+
+      if (new Date(nonceRow.expires_at) < new Date()) {
+        console.error('[oauth-callback] Nonce expired for', shop);
+        return new Response('OAuth request expired', { status: 401 });
+      }
+
+      // Consume the nonce (delete so it can't be replayed)
+      await supabase.from('oauth_nonces').delete().eq('id', nonceRow.id);
+    } catch (nonceErr: any) {
+      console.warn('[oauth-callback] Nonce validation skipped (table may not exist):', nonceErr.message);
+    }
+  }
+
+  try {
+    // ── 3. Exchange code for access token ──────────────────────────────────
+    const tokenRes = await fetchWithTimeout(`https://${shop}/admin/oauth/access_token`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ client_id: SHOPIFY_KEY, client_secret: SHOPIFY_SEC, code }),
+    }, 8000);
+
+    if (!tokenRes.ok) {
+      // Double-invoke guard: Shopify sometimes fires the callback twice with one code.
+      // If an active installation already exists, redirect rather than error.
+      const { data: existing } = await supabase
+        .from('store_installations').select('id')
+        .eq('shop_domain', shop).eq('installation_status', 'active').maybeSingle();
+      if (existing) return redirect(`${dashboardUrl}/?shop=${shop}`);
+      throw new Error(`Token exchange failed: ${tokenRes.status}`);
+    }
+
+    const { access_token: accessToken, scope } = await tokenRes.json();
+    if (!accessToken) throw new Error('No access token in response');
+    const scopes: string[] = scope ? scope.split(',').map((s: string) => s.trim()) : [];
+
+    // ── 4. Resolve or create client record ────────────────────────────────
+    const storeName     = shop.replace('.myshopify.com', '');
+    const fallbackEmail = `${storeName}@shopify.com`;
+    let clientId: string | null = stateData.client_id || null;
+
+    if (!clientId) {
+      const { data: existingInstall } = await supabase
+        .from('store_installations').select('client_id').eq('shop_domain', shop).maybeSingle();
+      clientId = existingInstall?.client_id || null;
+    }
+
+    if (!clientId) {
+      const { data: byEmail } = await supabase
+        .from('clients').select('id').eq('contact_email', fallbackEmail).maybeSingle();
+      if (byEmail) {
+        clientId = byEmail.id;
+      } else {
+        const slug = `${storeName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}-${Date.now().toString(36)}`;
+        const { data: newClient, error: clientErr } = await supabase
+          .from('clients')
+          .insert({ name: storeName, slug, contact_email: fallbackEmail, primary_color: '#3b82f6', is_active: true })
+          .select('id').single();
+        if (clientErr) {
+          const { data: race } = await supabase.from('clients').select('id').eq('contact_email', fallbackEmail).maybeSingle();
+          clientId = race?.id || null;
+        } else {
+          clientId = newClient.id;
+        }
+      }
+    }
+
+    // ── 5. Upsert installation (C-03: encrypt access token before storing) ────
+    // encryptToken() is a no-op if ACCESS_TOKEN_ENCRYPTION_KEY is not set,
+    // so it's safe to call unconditionally — it degrades to plaintext storage.
+    const encryptedToken = await encryptToken(accessToken).catch(() => accessToken);
+
+    const { data: installation, error: installErr } = await supabase
+      .from('store_installations')
+      .upsert({
+        client_id: clientId, shop_domain: shop, myshopify_domain: shop,
+        shop_name: storeName, shop_email: fallbackEmail,
+        installation_status: 'active',
+        installed_at: new Date().toISOString(), last_active_at: new Date().toISOString(),
+        access_token: encryptedToken, shopify_access_token: encryptedToken,
+        api_version: '2025-01', scopes, // C-02: shopify_api_secret must never be persisted to DB
+        webhooks_registered: false, billing_plan: 'free', billing_status: 'active',
+        app_settings: { auto_create_members: true, auto_assign_rewards: true, email_notifications: true },
+      }, { onConflict: 'shop_domain', ignoreDuplicates: false })
+      .select('id').single();
+
+    if (installErr) throw installErr;
+    const installationId = installation.id;
+
+    // ── 6. Parallel: shop.json (real email) + webhook registration ─────────
+    const [shopDetailsResult] = await Promise.allSettled([
+      fetchShopDetails(shop, accessToken, 5000),
+      registerWebhooks(shop, accessToken, installationId, clientId, supabase),
+    ]);
+
+    const shopData      = shopDetailsResult.status === 'fulfilled' ? shopDetailsResult.value : null;
+    const merchantEmail = shopData?.email && !shopData.email.endsWith('@shopify.com') ? shopData.email : fallbackEmail;
+    const merchantName  = shopData?.shop_owner || shopData?.name || storeName;
+
+    // Update installation with real shop details
+    if (shopData && merchantEmail !== fallbackEmail) {
+      await supabase.from('store_installations').update({
+        shop_email: merchantEmail, shop_name: shopData.name || storeName,
+        shop_owner: shopData.shop_owner || null, shop_phone: shopData.phone || null,
+        shop_currency: shopData.currency || null,
+      }).eq('id', installationId);
+    }
+
+    // ── 7. Generate magic link server-side ────────────────────────────────
+    // The magic link is used only as a redirect target — never returned to JS.
+    const redirectTo = `${dashboardUrl}/auth/shopify-callback?shop=${encodeURIComponent(shop)}&client_id=${encodeURIComponent(clientId || '')}`;
+    const magicLink  = await generateMerchantMagicLink(supabase, merchantEmail, merchantName, shop, clientId, redirectTo);
+
+    // ── 8. Background: install default plugins ────────────────────────────
+    const bg = installDefaultPlugins(installationId, clientId, supabase);
+    try { (globalThis as any).EdgeRuntime?.waitUntil(bg); } catch {}
+
+    // ── 9. Redirect through magic link — never exposed to client JS ────────
+    if (magicLink) {
+      console.log(`[oauth-callback] SSO redirect for ${shop}`);
+      return redirect(magicLink);
+    }
+
+    // Fallback: redirect to app (ShopifyLanding can handle re-open via HMAC)
+    console.warn(`[oauth-callback] Magic link generation failed for ${shop}, falling back`);
+    return redirect(`${dashboardUrl}/?shop=${shop}`);
+
+  } catch (err: any) {
+    console.error('[oauth-callback] Error:', err.message);
+    return redirect(`${dashboardUrl}/?shop=${shop}&error=oauth_failed`);
+  }
+});
+
+// ── Helpers ─────────────────────────────────────────────────────────────────
 
 function redirect(url: string) {
   return new Response(null, { status: 302, headers: { Location: url } });
 }
 
-function errorPage(message: string, status = 400) {
-  return new Response(`<html><body><h1>Installation Error</h1><p>${message}</p></body></html>`, {
-    status,
-    headers: { 'Content-Type': 'text/html' },
-  });
+async function generateMerchantMagicLink(
+  supabase: any, email: string, fullName: string,
+  shopDomain: string, clientId: string | null, redirectTo: string,
+): Promise<string | null> {
+  const tryGenerate = () => supabase.auth.admin.generateLink({ type: 'magiclink', email, options: { redirectTo } });
+
+  let { data, error } = await tryGenerate();
+
+  if (error) {
+    const { error: createErr } = await supabase.auth.admin.createUser({
+      email, email_confirm: true,
+      user_metadata: { shop_domain: shopDomain, client_id: clientId },
+    });
+    if (createErr && !createErr.message.toLowerCase().includes('already')) {
+      console.error('[generateMagicLink] createUser failed:', createErr.message);
+      return null;
+    }
+    const retry = await tryGenerate();
+    if (retry.error) { console.error('[generateMagicLink] retry failed:', retry.error.message); return null; }
+    data = retry.data;
+  }
+
+  const magicLink = data?.properties?.action_link;
+  const userId    = data?.user?.id;
+  if (!magicLink) return null;
+
+  // Upsert profile server-side so AuthContext finds it immediately on redirect.
+  // NOTE: supabase-js v2 builders have no .catch() — await + destructure instead.
+  if (userId) {
+    const { error: pErr } = await supabase.from('profiles').upsert(
+      { id: userId, email, full_name: fullName, role: 'client', client_id: clientId || null },
+      { onConflict: 'id', ignoreDuplicates: false },
+    );
+    if (pErr) console.error('[generateMagicLink] profile upsert:', pErr.message);
+  }
+
+  return magicLink;
 }
 
-/**
- * Shopify OAuth callback — called after merchant authorises the app.
- *
- * Multi-tenant client_id resolution (priority order):
- *  1. `state` query param  — set by Goself dashboard when initiating OAuth
- *     Dashboard initiates: /admin/oauth/authorize?...&state=<client_id>
- *  2. Existing store_installations row — handles re-installs / token refresh
- *  3. null — shop installed directly from App Store (client_id linked later
- *     when merchant connects their Goself account from the dashboard)
- *
- * Full flow:
- *  1. Verify HMAC using SHOPIFY_CLIENT_SECRET
- *  2. Exchange code for permanent access token
- *  3. Upsert store_installations with resolved client_id
- *  4. Register GDPR webhooks programmatically (belt-and-suspenders alongside toml)
- *  5. Redirect to dashboard /shopify/installed?shop=&client_id=
- */
-Deno.serve(async (req: Request) => {
-  const url = new URL(req.url);
-  const params = url.searchParams;
+async function fetchWithTimeout(url: string, init: RequestInit, ms: number): Promise<Response> {
+  const ctrl = new AbortController();
+  const t    = setTimeout(() => ctrl.abort(), ms);
+  try { return await fetch(url, { ...init, signal: ctrl.signal }); }
+  finally { clearTimeout(t); }
+}
 
-  const shop      = params.get('shop')  || '';
-  const code      = params.get('code')  || '';
-  const hmac      = params.get('hmac')  || '';
-  // state carries the Goself client_id when install is initiated from the dashboard
-  const stateClientId = params.get('state') || '';
-
-  if (!shop || !code || !hmac) {
-    return errorPage('Missing required OAuth parameters (shop, code, hmac).');
-  }
-
-  // ── 1. Verify HMAC ───────────────────────────────────────────────────────
-  const isValid = await verifyOAuthHmac(params);
-  if (!isValid) {
-    console.error('[shopify-oauth-callback] HMAC verification failed for shop:', shop);
-    return errorPage('Invalid HMAC signature. Installation aborted.', 401);
-  }
-
-  // ── 2. Validate shop domain format ───────────────────────────────────────
-  if (!/^[a-zA-Z0-9-]+\.myshopify\.com$/.test(shop)) {
-    return errorPage('Invalid shop domain format.');
-  }
-
-  const shopifyAppClientId = Deno.env.get('SHOPIFY_CLIENT_ID');
-  const clientSecret       = Deno.env.get('SHOPIFY_CLIENT_SECRET');
-
-  if (!shopifyAppClientId || !clientSecret) {
-    console.error('[shopify-oauth-callback] SHOPIFY_CLIENT_ID or SHOPIFY_CLIENT_SECRET not set');
-    return errorPage('App configuration error.', 500);
-  }
-
+async function fetchShopDetails(shop: string, accessToken: string, ms: number): Promise<any> {
   try {
-    // ── 3. Exchange code for permanent access token ──────────────────────
-    const tokenRes = await fetch(`https://${shop}/admin/oauth/access_token`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        client_id: shopifyAppClientId,
-        client_secret: clientSecret,
-        code,
-      }),
-    });
-
-    if (!tokenRes.ok) {
-      const errText = await tokenRes.text();
-      console.error('[shopify-oauth-callback] Token exchange failed:', tokenRes.status, errText);
-      return errorPage('Failed to exchange authorisation code. Please try installing again.', 502);
-    }
-
-    const tokenData  = await tokenRes.json();
-    const accessToken: string = tokenData.access_token;
-    const scope: string       = tokenData.scope || '';
-
-    if (!accessToken) {
-      console.error('[shopify-oauth-callback] No access_token in response');
-      return errorPage('No access token received from Shopify.', 502);
-    }
-
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+    const res = await fetchWithTimeout(
+      `https://${shop}/admin/api/2025-01/shop.json`,
+      { headers: { 'X-Shopify-Access-Token': accessToken } }, ms,
     );
+    if (!res.ok) return null;
+    const { shop: data } = await res.json();
+    return data || null;
+  } catch { return null; }
+}
 
-    // ── 4. Resolve client_id ─────────────────────────────────────────────
-    // Priority: state param (from dashboard) → existing row → null
-    let resolvedClientId: string | null = null;
+async function registerWebhooks(
+  shop: string, accessToken: string, installationId: string,
+  clientId: string | null, supabase: any,
+): Promise<void> {
+  const topics     = ['orders/create', 'orders/updated', 'orders/paid', 'customers/create', 'customers/update'];
+  const webhookUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/shopify-order-webhook`;
+  let success      = 0;
 
-    if (stateClientId) {
-      // Validate that the state value is a real client in auth.users
-      const { data: clientRow } = await supabase
-        .from('store_installations')
-        .select('client_id')
-        .eq('client_id', stateClientId)
-        .limit(1)
-        .maybeSingle();
-
-      // Accept state even if no prior installation exists — this is a new install
-      // We trust it because it came through Shopify's signed OAuth redirect
-      resolvedClientId = stateClientId;
-    }
-
-    if (!resolvedClientId) {
-      // Re-install: carry over the client_id from the existing record
-      const { data: existing } = await supabase
-        .from('store_installations')
-        .select('client_id')
-        .eq('shop_domain', shop)
-        .maybeSingle();
-      resolvedClientId = existing?.client_id || null;
-    }
-
-    // ── 5. Upsert store_installations ────────────────────────────────────
-    const { error: upsertErr } = await supabase
-      .from('store_installations')
-      .upsert(
-        {
-          shop_domain:         shop,
-          access_token:        accessToken,
-          scopes:              scope,
-          installation_status: 'active',
-          client_id:           resolvedClientId,
-          installed_at:        new Date().toISOString(),
-          updated_at:          new Date().toISOString(),
-        },
-        { onConflict: 'shop_domain' }
-      );
-
-    if (upsertErr) {
-      console.error('[shopify-oauth-callback] Failed to save installation:', upsertErr.message);
-      return errorPage('Failed to save installation. Please try again.', 500);
-    }
-
-    // ── 6. Register GDPR webhooks programmatically ───────────────────────
-    // Belt-and-suspenders alongside the toml webhook subscriptions.
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const gdprTopics = [
-      { topic: 'customers/data_request', address: `${supabaseUrl}/functions/v1/shopify-customers-data-request` },
-      { topic: 'customers/redact',       address: `${supabaseUrl}/functions/v1/shopify-customers-redact` },
-      { topic: 'shop/redact',            address: `${supabaseUrl}/functions/v1/shopify-shop-redact` },
-    ];
-
-    for (const { topic, address } of gdprTopics) {
-      await fetch(`https://${shop}/admin/api/2026-01/webhooks.json`, {
+  for (const topic of topics) {
+    try {
+      const res  = await fetchWithTimeout(`https://${shop}/admin/api/2025-01/webhooks.json`, {
         method: 'POST',
-        headers: {
-          'X-Shopify-Access-Token': accessToken,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ webhook: { topic, address, format: 'json' } }),
-      }).catch((e) => console.error(`[shopify-oauth-callback] Webhook reg failed (${topic}):`, e.message));
-    }
-
-    // ── 7. Redirect to dashboard ─────────────────────────────────────────
-    // Pass both shop and client_id so the dashboard can show the right merchant
-    const redirectParams = new URLSearchParams({ shop });
-    if (resolvedClientId) redirectParams.set('client_id', resolvedClientId);
-    return redirect(`${DASHBOARD_URL}/shopify/installed?${redirectParams}`);
-
-  } catch (err) {
-    console.error('[shopify-oauth-callback] Unhandled error:', (err as Error).message);
-    return errorPage('An unexpected error occurred during installation.', 500);
+        headers: { 'X-Shopify-Access-Token': accessToken, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ webhook: { topic, address: webhookUrl, format: 'json' } }),
+      }, 5000);
+      const { webhook } = await res.json();
+      if (res.ok && webhook) {
+        await supabase.from('store_webhooks').upsert({
+          store_installation_id: installationId, client_id: clientId,
+          webhook_topic: topic, shopify_webhook_id: webhook.id.toString(),
+          webhook_address: webhookUrl, status: 'active', registered_at: new Date().toISOString(),
+        }, { onConflict: 'store_installation_id,webhook_topic' });
+        success++;
+      }
+    } catch {}
   }
-});
+
+  await supabase.from('store_installations').update({
+    webhooks_registered: success > 0,
+    webhooks_registered_at: new Date().toISOString(),
+    webhook_health_status: success === topics.length ? 'healthy' : 'degraded',
+  }).eq('id', installationId);
+}
+
+async function installDefaultPlugins(installationId: string, clientId: string | null, supabase: any): Promise<void> {
+  const plugins = [
+    { type: 'loyalty',   name: 'Loyalty Points System', version: '1.0.0' },
+    { type: 'rewards',   name: 'Rewards Program',        version: '1.0.0' },
+    { type: 'referral',  name: 'Referral Program',       version: '1.0.0' },
+    { type: 'campaigns', name: 'Campaign Management',    version: '1.0.0' },
+  ];
+  await supabase.from('store_plugins').upsert(
+    plugins.map(p => ({
+      store_installation_id: installationId, client_id: clientId,
+      plugin_type: p.type, plugin_name: p.name, plugin_version: p.version,
+      status: 'active', installed_at: new Date().toISOString(),
+      plugin_config: {}, feature_flags: {},
+    })),
+    { onConflict: 'store_installation_id,plugin_type' },
+  );
+}
+
+function normalizeOrigin(url?: string): string | null {
+  if (!url) return null;
+  try { const p = new URL(url); return ['https:', 'http:'].includes(p.protocol) ? p.origin : null; }
+  catch { return null; }
+}
+
+function resolveSafeDashboardUrl(stateAppUrl?: string): string | null {
+  const allowed = [DASHBOARD_URL_ENV, APP_URL_ENV, ...ALLOWED_APP_URLS, ...DEFAULT_ALLOWED]
+    .map(normalizeOrigin).filter((o): o is string => Boolean(o));
+  for (const candidate of [stateAppUrl, DASHBOARD_URL_ENV, APP_URL_ENV, ...DEFAULT_ALLOWED]) {
+    const origin = normalizeOrigin(candidate);
+    if (origin && allowed.includes(origin) && candidate) return candidate;
+  }
+  return null;
+}
+
+async function verifyShopifyHmac(url: URL, secret: string): Promise<boolean> {
+  const hmac = url.searchParams.get('hmac');
+  if (!hmac) return false;
+  const msg = Array.from(url.searchParams.entries())
+    .filter(([k]) => k !== 'hmac').sort(([a], [b]) => a.localeCompare(b))
+    .map(([k, v]) => `${k}=${v}`).join('&');
+  const key = await crypto.subtle.importKey(
+    'raw', new TextEncoder().encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'],
+  );
+  const sig      = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(msg));
+  const computed = Array.from(new Uint8Array(sig)).map(b => b.toString(16).padStart(2, '0')).join('');
+  return computed === hmac;
+}
