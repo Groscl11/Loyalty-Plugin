@@ -4,7 +4,6 @@
  */
 
 import React from 'react';
-import { interpolate } from '../utils/interpolate.js';
 
 // forwardRef required so LoyaltyWidget can move focus into the header on panel open
 const PanelHeader = React.memo(React.forwardRef(function PanelHeader({
@@ -12,14 +11,31 @@ const PanelHeader = React.memo(React.forwardRef(function PanelHeader({
   activeTab,
   isGuest,
   customerFirstName,
+  customerTier,
+  customerTierName,
+  customerPoints,
   onBack,
   onClose,
   storeName,
 }, ref) {
   const canGoBack = !isGuest && activeTab !== 'home';
-  const subtitle = isGuest
-    ? 'Explore · Sign up to unlock'
-    : interpolate(config.welcomeMsg, { firstName: customerFirstName || 'there' });
+
+  let subtitle;
+  if (isGuest) {
+    subtitle = 'Explore · Sign up to unlock';
+  } else {
+    // Prefer the merchant's exact configured tier name (e.g. "Earth"); then any
+    // tierNames mapping; then a capitalised key. Never invent a "Bronze" fallback —
+    // if there's no tier, show points only.
+    const tierLabel =
+      customerTierName ||
+      config.tierNames?.[customerTier] ||
+      (customerTier ? customerTier.charAt(0).toUpperCase() + customerTier.slice(1) : '');
+    const ptsLabel  = customerPoints != null
+      ? `${Number(customerPoints).toLocaleString()} ${config.pointsAbbrev || 'pts'}`
+      : null;
+    subtitle = [tierLabel, ptsLabel].filter(Boolean).join(' · ') || `${customerFirstName || 'Member'}'s Rewards`;
+  }
 
   return (
     <div

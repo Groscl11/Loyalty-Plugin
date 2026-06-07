@@ -12,10 +12,8 @@
  */
 
 import React, { useMemo } from 'react';
-import { tokens, tierStyle, accentSoft, fmtPts, adjustColor } from '../../utils/tokens.js';
+import { tokens, tierStyleByIndex, tierStyleFromColor, accentSoft, fmtPts, adjustColor } from '../../utils/tokens.js';
 import { interpolate } from '../../utils/interpolate.js';
-
-const TIER_ORDER = ['bronze', 'silver', 'gold', 'platinum'];
 
 const MemberHome = React.memo(function MemberHome({
   data,
@@ -25,24 +23,47 @@ const MemberHome = React.memo(function MemberHome({
 }) {
   const { customer, merchant, history, redeemCatalog, survey } = data;
 
+  // Build a sorted tier list from merchant.tierThresholds (works for any tier names,
+  // not just the generic bronze/silver/gold/platinum).
+  const tierOrder = useMemo(() => {
+    const thresholds = merchant.tierThresholds || {};
+    return Object.entries(thresholds)
+      .filter(([key]) => key !== 'names')
+      .sort(([, a], [, b]) => (a || 0) - (b || 0))
+      .map(([key]) => key);
+  }, [merchant.tierThresholds]);
+
   // ── Tier progress ─────────────────────────────────────────────────────────
-  const currentTier      = customer.tier || 'bronze';
-  const tierVis          = tierStyle(currentTier);
-  const nextTierKey      = TIER_ORDER[TIER_ORDER.indexOf(currentTier) + 1];
-  const nextThreshold    = nextTierKey ? merchant.tierThresholds?.[nextTierKey] || 0 : null;
+  // Fall back to the program's lowest configured tier (not a hardcoded "bronze"
+  // that may not exist in this merchant's program).
+  const currentTier = customer.tier || tierOrder[0] || '';
+
+  const currentTierIdx = tierOrder.length ? Math.max(0, tierOrder.indexOf(currentTier)) : 0;
+  const tierVis = (() => {
+    const posBased    = tierStyleByIndex(currentTierIdx);
+    const customColor = merchant.tierColors?.[currentTier];
+    if (customColor) {
+      // Merge admin color gradient with position-appropriate emoji
+      return { ...tierStyleFromColor(customColor), emoji: posBased.emoji };
+    }
+    return posBased;
+  })();
+  const nextTierKey      = tierOrder[currentTierIdx + 1] || null;
+  const nextThreshold    = nextTierKey ? (merchant.tierThresholds?.[nextTierKey] ?? null) : null;
   const currentThreshold = merchant.tierThresholds?.[currentTier] || 0;
   // Tier progress uses lifetime earned — spending points never resets your tier progress
   const lifetimePts      = customer.lifetimeEarned || 0;
-  const ptsToNext        = nextThreshold ? Math.max(0, nextThreshold - lifetimePts) : 0;
+  const ptsToNext        = nextThreshold != null ? Math.max(0, nextThreshold - lifetimePts) : 0;
   const progressPct      = nextThreshold
     ? Math.min(100, Math.max(0, Math.round(((lifetimePts - currentThreshold) / (nextThreshold - currentThreshold)) * 100)))
     : 100;
 
   // ── Next reward (closest redeemable the user is working toward) ──────────
   const nextReward = useMemo(() => {
+    // Exclude brandRewards — those are cross-brand marketplace/partner vouchers.
+    // Only feature store-specific discount and manual rewards as the "next goal".
     const all = [
       ...(redeemCatalog?.discountRewards || []),
-      ...(redeemCatalog?.brandRewards    || []),
       ...(redeemCatalog?.manualRewards   || []),
     ];
     if (!all.length) return null;
@@ -111,7 +132,7 @@ const MemberHome = React.memo(function MemberHome({
           display: 'flex', alignItems: 'center', gap: 6,
         }}>
           <span style={{ fontSize: 14 }}>{tierVis.emoji}</span>
-          {config.tierNames?.[currentTier] || currentTier} tier
+          {customer.tierName || config.tierNames?.[currentTier] || currentTier} tier
         </div>
         <div style={{
           fontSize: 30, fontWeight: 700,
@@ -120,7 +141,7 @@ const MemberHome = React.memo(function MemberHome({
         }}>
           {fmtPts(customer.pointsBalance)} {config.pointsAbbrev || 'pts'}
         </div>
-        {nextThreshold && (
+        {nextThreshold != null && nextThreshold > 0 && (
           <>
             <div style={{
               height: 8, background: 'rgba(255,255,255,0.5)',

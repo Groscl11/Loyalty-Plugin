@@ -18,16 +18,26 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { cacheGet, cacheSet, cacheClear, invalidateCustomerSession } from '../utils/sessionCache.js';
 import { useRealtimeSubscription } from './useRealtime.js';
+import {
+  getWidgetToken,
+  fetchWidgetToken,
+  storeTokenFromRegistration,
+  clearWidgetToken,
+} from '../utils/widgetToken.js';
+import { initShopScope } from '../utils/sessionCache.js';
 
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from '../utils/supabase.js';
 
 // ---------------------------------------------------------------------------
-// Fetch helper — 8-second timeout, Supabase auth header
+// Fetch helper — 8-second timeout, Supabase auth + optional widget token
 // ---------------------------------------------------------------------------
 async function apiFetch(url, options = {}) {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 8000);
   try {
+    // C-01: attach the widget token when available so authenticated endpoints
+    // can verify identity without trusting email values from the request body.
+    const widgetToken = getWidgetToken();
     const res = await fetch(url, {
       ...options,
       signal: ctrl.signal,
@@ -35,6 +45,7 @@ async function apiFetch(url, options = {}) {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
         apikey: SUPABASE_ANON_KEY,
+        ...(widgetToken ? { 'X-Widget-Token': widgetToken } : {}),
         ...(options.headers || {}),
       },
     });
@@ -70,12 +81,11 @@ function getCustomerEmail() {
     window.Shopify?.customerEmail ||
     // 5. Dawn/Sense/Craft themes — Shopify customer object
     window.Shopify?.customer?.email ||
-    // 6. Meta tag fallback
+    // 6. Meta tag fallback — injected by Shopify server-side
     document.querySelector('meta[name="shopify:customer-email"]')?.content ||
-    // 7. localStorage — some login apps persist email here
-    tryLocalStorage('goself_customer_email') ||
-    tryLocalStorage('customer_email') ||
-    tryLocalStorage('user_email') ||
+    // M-09: localStorage fallbacks REMOVED — any script on the page can write to
+    // localStorage. Only trust server-injected sources above (window.__, Shopify SDK,
+    // meta tags). localStorage email detection was the remaining untrusted path.
     null
   );
   if (email) console.log('[GoSelf] detected customer email:', email);
@@ -84,6 +94,43 @@ function getCustomerEmail() {
 
 function tryLocalStorage(key) {
   try { return localStorage.getItem(key) || null; } catch { return null; }
+}
+
+function getCustomerName() {
+  if (typeof window === 'undefined') return {};
+  const firstName = (
+    window.__goself_customer_first_name ||
+    window.Shopify?.customer?.first_name ||
+    ''
+  ).trim();
+  const lastName = (
+    window.__goself_customer_last_name ||
+    window.Shopify?.customer?.last_name ||
+    ''
+  ).trim();
+  return { firstName, lastName };
+}
+
+// ---------------------------------------------------------------------------
+// Auto-enroll — called when get-loyalty-status returns "Member not found"
+// ---------------------------------------------------------------------------
+async function autoEnrollMember(shopDomain, email) {
+  const { firstName, lastName } = getCustomerName();
+  const payload = { shop_domain: shopDomain, email };
+  if (firstName) payload.first_name = firstName;
+  if (lastName)  payload.last_name  = lastName;
+
+  const data = await apiFetch(
+    `${SUPABASE_URL}/functions/v1/register-loyalty-member`,
+    { method: 'POST', body: JSON.stringify(payload) }
+  );
+  if (!data.success) throw new Error(data.error || 'Enrollment failed');
+
+  // C-01: registration response includes widget_token — store immediately so
+  // the next call to get-loyalty-status (authenticated endpoint) has a token.
+  storeTokenFromRegistration(data);
+  console.log('[GoSelf] auto-enrolled member:', data.message, '| welcome_bonus:', data.welcome_bonus, '| token:', !!data.widget_token);
+  return data;
 }
 
 // ---------------------------------------------------------------------------
@@ -174,8 +221,20 @@ async function fetchCustomerSession(shopDomain, customerEmail) {
   const cached = cacheGet(cacheKey);
   if (cached) return cached;
 
+  // C-01: Ensure we have a valid widget token before calling the authenticated endpoint.
+  // For returning members the token comes from sessionStorage; if missing (first load,
+  // new tab, token expired), fetch a fresh one from issue-widget-token.
+  if (!getWidgetToken() && customerEmail) {
+    await fetchWidgetToken(SUPABASE_URL, SUPABASE_ANON_KEY, customerEmail, shopDomain);
+    // If still null the member isn't enrolled yet — that's fine, the 401 from
+    // get-loyalty-status will trigger auto-enrollment in the caller, which stores
+    // the token from the registration response before retrying.
+  }
+
   const data = await apiFetch(
-    `${SUPABASE_URL}/functions/v1/get-loyalty-status?email=${encodeURIComponent(customerEmail)}&shop_domain=${encodeURIComponent(shopDomain)}`
+    `${SUPABASE_URL}/functions/v1/get-loyalty-status`,
+    { method: 'POST', body: JSON.stringify({ shop_domain: shopDomain }) }
+    // Note: email/member_user_id deliberately omitted — identity comes from X-Widget-Token
   );
 
   // Treat any error response (404 member not found / not enrolled) as a throw
@@ -184,6 +243,29 @@ async function fetchCustomerSession(shopDomain, customerEmail) {
     console.warn('[GoSelf] get-loyalty-status:', data.error);
     throw new Error(data.error);
   }
+
+  // The backend returns `guest_config: true` (HTTP 200, no member data) when there
+  // is no valid widget token — i.e. this email is NOT an enrolled member for THIS
+  // shop. If we have a detected email, treat that as "not enrolled" so the caller's
+  // catch triggers auto-enrollment (which stores a token and refetches). Without
+  // this, a logged-in non-member is stuck rendering the guest placeholder forever.
+  if ((data.guest_config || !data.member_user_id) && customerEmail) {
+    // Encode the merchant's auto-enroll preference in the error so the caller can
+    // decide: ":auto" → silently enroll; ":manual" → show a join CTA (no member
+    // record created without the merchant opting in).
+    const mode = data.auto_enroll ? 'auto' : 'manual';
+    console.warn('[GoSelf] not enrolled for this shop (guest_config); mode:', mode);
+    throw new Error(`not enrolled:${mode}`);
+  }
+
+  // Lowest configured tier key (e.g. "earth") — used as the tier fallback instead of
+  // a hardcoded "bronze" that may not exist in this merchant's program.
+  const _thresholds = data.tier_thresholds || null;
+  const _lowestTierKey = _thresholds
+    ? (Object.entries(_thresholds)
+        .filter(([k]) => k !== 'names')
+        .sort((a, b) => (a[1] || 0) - (b[1] || 0))[0]?.[0] || null)
+    : null;
 
   const result = {
     customerId:       data.customer_id    || data.customerId    || data.member_user_id || null,
@@ -196,7 +278,11 @@ async function fetchCustomerSession(shopDomain, customerEmail) {
     // True once first bonus is claimed or any points are earned. Used to gate
     // the new-member Welcome screen — see MemberWelcome.jsx.
     welcomeBonusClaimed: data.welcome_bonus_claimed ?? true,
-    tier:             (data.tier?.name   || data.tier || 'bronze').toLowerCase(),
+    // Tier KEY (lowercased) for gradient/threshold lookups. No hardcoded "bronze"
+    // fallback — use the program's lowest real tier so we never invent a tier name.
+    tier:             (data.tier?.name   || data.tier || _lowestTierKey || '').toLowerCase() || null,
+    // Tier DISPLAY name exactly as configured by the merchant (e.g. "Earth").
+    tierName:         data.tier?.name    || null,
     referralCode:     data.referral_code  || data.referralCode  || null,
     referralUrl:      (data.referral_code || data.referralCode)
       ? `https://${shopDomain}?ref=${data.referral_code || data.referralCode}`
@@ -224,20 +310,30 @@ async function fetchMerchantConfig(shopDomain, customerData) {
   const cached = cacheGet(cacheKey);
   if (cached) return cached;
 
-  // Use earn_rules and tier_thresholds from the loyalty-status response if present
+  // Use earn_rules, tier_thresholds, tier_colors from the loyalty-status response if present
   const raw = customerData?._raw || {};
-  const earnRulesFromApi = raw.earn_rules || raw.earnRules || null;
+  const earnRulesFromApi   = raw.earn_rules || raw.earnRules || null;
   let tierThresholdsFromApi = raw.tier_thresholds || customerData?.tierThresholds || null;
+  let tierColorsFromApi     = raw.tier_colors     || null;
 
-  // For guests (no customer session), fetch program/tier config from backend
+  // For guests (no customer session), fetch program/tier config from backend.
+  // We POST with just shop_domain so the function can return tier_thresholds +
+  // tier_colors even when there's no logged-in member.
   let guestOrganizationName = null;
   if (!tierThresholdsFromApi && shopDomain) {
     try {
       const guestConfig = await apiFetch(
-        `${SUPABASE_URL}/functions/v1/get-loyalty-status?shop_domain=${encodeURIComponent(shopDomain)}`
+        `${SUPABASE_URL}/functions/v1/get-loyalty-status`,
+        {
+          method: 'POST',
+          body: JSON.stringify({ shop_domain: shopDomain, guest_config_only: true }),
+        }
       );
       if (guestConfig?.tier_thresholds) {
         tierThresholdsFromApi = guestConfig.tier_thresholds;
+      }
+      if (guestConfig?.tier_colors) {
+        tierColorsFromApi = guestConfig.tier_colors;
       }
       if (guestConfig?.organization_name) {
         guestOrganizationName = guestConfig.organization_name;
@@ -260,6 +356,9 @@ async function fetchMerchantConfig(shopDomain, customerData) {
       gold:     5000,
       platinum: 10000,
     },
+    // Admin-configured hex colour per tier key — used to generate card gradients.
+    // Empty object when no colours set (widget falls back to position-based presets).
+    tierColors: tierColorsFromApi || {},
     // Wallet voucher display style — set by client in portal, default 'chips'
     walletVoucherStyle: raw.wallet_voucher_style || null,
     // Feature flags — read from backend raw data when present, default to true
@@ -289,8 +388,8 @@ async function fetchEarnRules(shopDomain, customerId) {
   if (cached) return cached;
 
   try {
+    // shop_domain in URL is fine (not PII); member_user_id omitted — token provides identity
     const params = new URLSearchParams({ shop_domain: shopDomain });
-    if (customerId) params.set('member_user_id', customerId);
     const data = await apiFetch(
       `${SUPABASE_URL}/functions/v1/get-earning-rules?${params}`
     );
@@ -320,11 +419,11 @@ async function fetchMemberRewards(shopDomain, customerEmail, customerId) {
   if (cached) return cached;
 
   try {
-    const params = new URLSearchParams({ shop: shopDomain });
-    if (customerId)    params.set('member_user_id', customerId);
-    else if (customerEmail) params.set('email', customerEmail);
+    // M-05 fix: send shop_domain in POST body — never email in URL query string.
+    // Identity comes from X-Widget-Token (attached automatically by apiFetch).
     const data = await apiFetch(
-      `${SUPABASE_URL}/functions/v1/get-member-rewards?${params}`
+      `${SUPABASE_URL}/functions/v1/get-member-rewards`,
+      { method: 'POST', body: JSON.stringify({ shop_domain: shopDomain }) }
     );
 
     // marketplace_offer rewards are partner/brand offers — show in Partners tab
@@ -632,6 +731,8 @@ async function fetchSurvey(shopDomain, customerEmail, rawSession) {
 // ---------------------------------------------------------------------------
 export function useCustomerData() {
   const shopDomain = getShopDomain();
+  // M-07: Scope session cache to this shop so cross-shop contamination is impossible
+  initShopScope(shopDomain);
 
   // detectedEmail is live-reactive — poll for late logins (GoKwik, OTP flows, etc.)
   const [detectedEmail, setDetectedEmail] = useState(() => getCustomerEmail());
@@ -747,9 +848,37 @@ export function useCustomerData() {
           console.log('[GoSelf] session loaded, customerId:', customerData.customerId);
           setCustomer(customerData);
         } catch (e) {
-          console.warn('[GoSelf] customer_session fetch failed:', e.message);
-          // Keep email so LoyaltyWidget still shows member view (not enrolled yet)
-          setCustomer({ email: customerEmail, pointsBalance: 0, lifetimeEarned: 0, lifetimeRedeemed: 0 });
+          const isNotEnrolled = /not found|not enrolled/i.test(e.message);
+          const isManual      = /not enrolled:manual/i.test(e.message);
+          if (isManual && customerEmail) {
+            // ── Merchant disabled auto-enroll → show the join/guest experience.
+            // Do NOT create a member record; the customer opts in via the signup gate.
+            console.log('[GoSelf] auto-enroll disabled for this merchant — showing not-enrolled state');
+            setCustomer({ notEnrolled: true });
+          } else if (isNotEnrolled && customerEmail) {
+            // ── Auto-enroll: member exists in Shopify but not in loyalty DB ──
+            console.log('[GoSelf] member not found — auto-enrolling...');
+            try {
+              await autoEnrollMember(shopDomain, customerEmail);
+              // Retry session fetch now that the member record exists
+              try {
+                invalidateCustomerSession();
+                customerData = await fetchCustomerSession(shopDomain, customerEmail);
+                rawSession   = customerData._raw || null;
+                setCustomer(customerData);
+                console.log('[GoSelf] post-enroll session loaded, customerId:', customerData.customerId);
+              } catch (retryErr) {
+                console.warn('[GoSelf] post-enroll fetch failed:', retryErr.message);
+                setCustomer({ email: customerEmail, pointsBalance: 0, lifetimeEarned: 0, lifetimeRedeemed: 0, welcomeBonusClaimed: false });
+              }
+            } catch (enrollErr) {
+              console.warn('[GoSelf] auto-enroll failed:', enrollErr.message);
+              setCustomer({ email: customerEmail, pointsBalance: 0, lifetimeEarned: 0, lifetimeRedeemed: 0 });
+            }
+          } else {
+            console.warn('[GoSelf] customer_session fetch failed:', e.message);
+            setCustomer({ email: customerEmail, pointsBalance: 0, lifetimeEarned: 0, lifetimeRedeemed: 0 });
+          }
         }
       }
 
@@ -757,9 +886,8 @@ export function useCustomerData() {
       const [merchantResult, earnRulesResult, memberRewardsResult] = await Promise.allSettled([
         fetchMerchantConfig(shopDomain, customerData),
         fetchEarnRules(shopDomain, customerData?.customerId ?? null),
-        customerEmail
-          ? fetchMemberRewards(shopDomain, customerEmail, customerData?.customerId ?? null)
-          : Promise.resolve(null),
+        // Fetch catalog for guests too (no email/id = catalog only, can_redeem always false)
+        fetchMemberRewards(shopDomain, customerEmail || null, customerData?.customerId ?? null),
       ]);
       if (merchantResult.status      === 'fulfilled') setMerchant(merchantResult.value);
       if (earnRulesResult.status     === 'fulfilled' && earnRulesResult.value) setEarnRules(earnRulesResult.value);

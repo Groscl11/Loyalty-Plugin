@@ -10,14 +10,13 @@
  *   overflow: hidden, borderRadius: 18
  */
 
-import React, { useState, useCallback, useEffect, useRef, startTransition, Suspense } from 'react';
+import React, { useState, useCallback, useEffect, useRef, useMemo, startTransition, Suspense } from 'react';
 
 import { useWidgetConfig }  from './hooks/useWidgetConfig.js';
 import { useCustomerData }  from './hooks/useCustomerData.js';
 
 import LoyaltyButton     from './LoyaltyButton.jsx';
 import PanelHeader       from './components/PanelHeader.jsx';
-import GuestBanner       from './components/GuestBanner.jsx';
 import BottomNav         from './components/BottomNav.jsx';
 import PoweredByBar      from './components/PoweredByBar.jsx';
 import SignupGate        from './components/SignupGate.jsx';
@@ -30,9 +29,11 @@ const GuestRedeem      = React.lazy(() => import('./tabs/guest/GuestRedeem.jsx')
 const GuestRefer       = React.lazy(() => import('./tabs/guest/GuestRefer.jsx'));
 const GuestMilestones  = React.lazy(() => import('./tabs/guest/GuestMilestones.jsx'));
 const GuestWallet      = React.lazy(() => import('./tabs/guest/GuestWallet.jsx'));
+const GuestProfile     = React.lazy(() => import('./tabs/guest/GuestProfile.jsx'));
 
 // Member tabs
 const MemberHome       = React.lazy(() => import('./tabs/member/MemberHome.jsx'));
+const MemberWelcome    = React.lazy(() => import('./tabs/member/MemberWelcome.jsx'));
 const MemberEarn       = React.lazy(() => import('./tabs/member/MemberEarn.jsx'));
 const MemberRedeem     = React.lazy(() => import('./tabs/member/MemberRedeem.jsx'));
 const MemberWallet     = React.lazy(() => import('./tabs/member/MemberWallet.jsx'));
@@ -59,10 +60,39 @@ export function LoyaltyWidget() {
   const panelRef      = useRef(null);
   const firstFocusRef = useRef(null);
 
-  // isGuest = no Shopify session (no email detected + no customerId from API)
-  const isGuest = !data.customer?.email && !data.detectedEmail;
+  // isGuest = no Shopify session (no email detected + no customerId from API), OR
+  // a logged-in customer who isn't an enrolled member on a store where the merchant
+  // has auto-enroll OFF (notEnrolled) — they get the join/signup experience.
+  const isGuest = (!data.customer?.email && !data.detectedEmail) || !!data.customer?.notEnrolled;
 
-  const activeCouponCount = (data.wallet || []).filter(c => c.status === 'active').length;
+  // Welcome state: show the onboarding screen only for brand-new members who
+  // have zero points balance AND an unclaimed welcome bonus.
+  // Using pointsBalance (not lifetimeEarned) because lifetime_points_earned
+  // is often not populated; pointsBalance is always the live current balance.
+  // A member with any points goes straight to MemberHome regardless of bonus state.
+  const isWelcomeState = !isGuest
+    && data.customer?.email
+    && (data.customer?.pointsBalance ?? 0) === 0
+    && data.customer?.welcomeBonusClaimed === false;
+
+  // Count active vouchers across all sources — same logic as MemberWallet's
+  // combinedWallet so the notification dot and Profile count stay in sync.
+  const activeCouponCount = useMemo(() => {
+    const wallet     = data.wallet      || [];
+    const redeemCat  = data.redeemCatalog || {};
+    const seenCodes  = new Set(wallet.map(w => w.code).filter(Boolean));
+    let extra = 0;
+    const countNew = (entries) => {
+      if (!entries) return;
+      Object.values(entries).forEach(entry => {
+        const code = typeof entry === 'string' ? entry : (entry?.code || entry?.discount_code || null);
+        if (code && !seenCodes.has(code)) { seenCodes.add(code); extra++; }
+      });
+    };
+    countNew(redeemCat.existingCodes);
+    countNew(redeemCat.existingBrandCodes);
+    return wallet.filter(c => c.status === 'active').length + extra;
+  }, [data.wallet, data.redeemCatalog]);
   const notifyDot = !isGuest && activeCouponCount > 0;
 
   // ── Callbacks ──────────────────────────────────────────────────────────────
@@ -82,15 +112,14 @@ export function LoyaltyWidget() {
     startTransition(() => setActiveTab(tabId));
   }, []);
 
-  const openGate = useCallback((actionLabel) => {
-    setGateAction(actionLabel || '');
-    setGateOpen(true);
+  const openGate = useCallback(() => {
+    // Redirect guest to Shopify account login page
+    window.location.href = '/account/login';
   }, []);
 
+  // Kept for backward-compat (SignupGate no longer shown to guests)
   const closeGate = useCallback(() => setGateOpen(false), []);
-
   const handleJoin = useCallback(() => {
-    // After guest signups, refresh session
     setGateOpen(false);
     data.refetch('customer_session');
   }, [data]);
@@ -101,6 +130,16 @@ export function LoyaltyWidget() {
     // Refetch session after survey to apply points reward
     data.refetch('customer_session');
   }, [data]);
+
+  // ── If earn tab is active but rules aren't configured, bounce to home ──────
+  useEffect(() => {
+    // data.earnRules is the authoritative list from get-earning-rules;
+    // data.merchant.earnRules is always [] (get-loyalty-status doesn't return them).
+    const activeRules = data.earnRules?.length ?? data.merchant?.earnRules?.length ?? 0;
+    if (activeTab === 'earn' && activeRules === 0 && !data.isLoading) {
+      setActiveTab('home');
+    }
+  }, [activeTab, data.earnRules, data.merchant?.earnRules, data.isLoading]);
 
   // ── Keyboard: Escape closes panel ─────────────────────────────────────────
 
@@ -142,6 +181,10 @@ export function LoyaltyWidget() {
       bronze: 'Bronze', silver: 'Silver', gold: 'Gold', platinum: 'Platinum'
     },
     // Feature flags: only enable if backend says so (add to customer or merchant data as needed)
+    // Hide the Earn tab entirely when no earning rules are configured for this merchant.
+    // Use data.earnRules (from get-earning-rules) — merchant.earnRules is always empty
+    // because get-loyalty-status does not return the earn rules list.
+    showEarnTab:  (data.earnRules?.length ?? data.merchant?.earnRules?.length ?? 0) > 0,
     showReferTab: !!data.merchant?.showReferTab,
     showLeaderboard: !!data.merchant?.showLeaderboard,
     showSurvey: !!data.merchant?.showSurvey,
@@ -149,6 +192,8 @@ export function LoyaltyWidget() {
     showPartnerBrands: !!data.merchant?.showPartnerBrands,
     enableFreeProducts: !!data.merchant?.enableFreeProducts,
     showMilestones: !!data.merchant?.showMilestones,
+    // Wallet style: portal value (from backend) overrides Shopify block setting
+    walletVoucherStyle: data.merchant?.walletVoucherStyle || config.walletVoucherStyle || 'chips',
   };
 
   // ── Render active tab content ──────────────────────────────────────────────
@@ -164,8 +209,13 @@ export function LoyaltyWidget() {
         case 'refer':      return <GuestRefer      {...sharedGuestProps} />;
         case 'milestones': return <GuestMilestones {...sharedGuestProps} />;
         case 'wallet':     return <GuestWallet     {...sharedGuestProps} />;
+        case 'profile':    return <GuestProfile    {...sharedGuestProps} />;
         default:           return <GuestHome       {...sharedGuestProps} />;
       }
+    }
+    // Welcome screen takes priority on home tab for new members
+    if (activeTab === 'home' && isWelcomeState) {
+      return <MemberWelcome {...sharedMemberProps} />;
     }
     switch (activeTab) {
       case 'earn':       return <MemberEarn       {...sharedMemberProps} />;
@@ -244,15 +294,14 @@ export function LoyaltyWidget() {
             isGuest={isGuest}
             activeTab={activeTab}
             storeName={data.merchant?.storeName || ''}
+            customerFirstName={data.customer?.firstName}
+            customerTier={data.customer?.tier}
+            customerTierName={data.customer?.tierName}
+            customerPoints={data.customer?.pointsBalance}
             onBack={handleBack}
             onClose={closePanel}
             ref={firstFocusRef}
           />
-
-          {/* Guest banner */}
-          {isGuest && (
-            <GuestBanner config={effectiveConfig} onGate={openGate} />
-          )}
 
           {/* Scrollable tab content + overlays */}
           {hasOpened && (
