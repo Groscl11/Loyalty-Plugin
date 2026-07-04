@@ -3,7 +3,7 @@
 client_id = "3290e6e4e5cb6711e4a7876ef40f87e8"
 name = "Loyalty by Goself"
 # Embedded managed-install bootstrap (see shopify-token-exchange + /shopify/install).
-application_url = "https://ai.goself.in/shopify/install"
+application_url = "https://app.goself.in/shopify/install"
 # embedded = true REQUIRED for App Bridge session tokens used by token exchange.
 embedded = true
 
