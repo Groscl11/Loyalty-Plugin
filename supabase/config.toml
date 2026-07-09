@@ -24,6 +24,18 @@ verify_jwt = false
 [functions.backfill-token-encryption]
 verify_jwt = false
 
+# GDPR mandatory compliance webhooks — Shopify sends no Supabase JWT; each function
+# verifies the Shopify HMAC in-code. Gateway JWT check MUST be OFF or Shopify's
+# deliveries 401 before the function runs (fails App Store compliance review).
+[functions.shopify-customers-data-request]
+verify_jwt = false
+
+[functions.shopify-customers-redact]
+verify_jwt = false
+
+[functions.shopify-shop-redact]
+verify_jwt = false
+
 [api]
 enabled = true
 # Port to use for the API URL.
