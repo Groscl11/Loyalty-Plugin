@@ -112,11 +112,11 @@ Deno.serve(async (req: Request) => {
         .eq("installation_status", "active")
         .maybeSingle();
       if (existing) {
-        const link = await issueMagicLink(supabase, existing.shop_email, existing.shop_owner || existing.shop_name || shop, shop, existing.client_id, appUrlHint);
-        if (link) {
-          const sessionTokens = await exchangeMagicLinkForSession(link);
+        const ml = await issueMagicLink(supabase, existing.shop_email, existing.shop_owner || existing.shop_name || shop, shop, existing.client_id, appUrlHint);
+        if (ml) {
+          const sessionTokens = await exchangeOtpForSession(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_ANON_KEY")!, existing.shop_email, ml.otp);
           if (sessionTokens) return json({ success: true, access_token: sessionTokens.access_token, refresh_token: sessionTokens.refresh_token });
-          return json({ success: true, redirect: await toBreakoutUrl(supabase, link) });
+          return json({ success: true, redirect: await toBreakoutUrl(supabase, ml.link) });
         }
       }
       console.error(`[token-exchange] exchange failed: ${exchangeRes.status}`);
@@ -227,26 +227,31 @@ Deno.serve(async (req: Request) => {
       try { (globalThis as any).EdgeRuntime?.waitUntil(bg); } catch {}
     }
 
-    // ── 7. Generate magic link + upsert profile, return to bootstrap ─────────
-    const magicLink = await issueMagicLink(supabase, merchantEmail, merchantName, shop, clientId, appUrlHint);
-    if (!magicLink) {
+    // ── 7. Generate magic link + OTP, issue session tokens, return to bootstrap ─
+    const ml = await issueMagicLink(supabase, merchantEmail, merchantName, shop, clientId, appUrlHint);
+    if (!ml) {
       // Install persisted; SSO link failed. Bootstrap falls back to manual login.
       return json({ success: true, redirect: null });
     }
 
-    // Primary path: follow the magic link server-side to extract session tokens.
-    // ShopifyInstall receives them and calls supabase.auth.setSession() directly
-    // inside the Shopify iframe — no redirect chain, no top-frame breakout.
-    const sessionTokens = await exchangeMagicLinkForSession(magicLink);
+    // Primary path: POST email_otp to /auth/v1/verify for JSON session tokens.
+    // GoTrue returns tokens directly on POST — no redirect, no URL hash.
+    // This is the only approach that works inside Shopify App Bridge (App Bridge
+    // strips URL hashes when re-embedding navigations, breaking the hash-based flow).
+    const sessionTokens = await exchangeOtpForSession(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_ANON_KEY")!,
+      merchantEmail,
+      ml.otp,
+    );
     if (sessionTokens) {
       console.log(`[token-exchange] direct session tokens issued for ${shop}`);
       return json({ success: true, access_token: sessionTokens.access_token, refresh_token: sessionTokens.refresh_token });
     }
 
-    // Fallback: server-side exchange failed (magic link OTP NOT consumed), so the
-    // redirect approach still works.
+    // Fallback: OTP exchange failed, magic link still unused → redirect approach.
     console.log(`[token-exchange] fallback to redirect for ${shop}`);
-    return json({ success: true, redirect: await toBreakoutUrl(supabase, magicLink) });
+    return json({ success: true, redirect: await toBreakoutUrl(supabase, ml.link) });
 
   } catch (err: any) {
     console.error("[token-exchange] Unhandled error:", err?.message ?? err);
@@ -257,34 +262,47 @@ Deno.serve(async (req: Request) => {
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
 /**
- * Follow the generated magic link server-side (with redirect:manual) to capture
- * the session tokens from the Location header hash. This lets ShopifyInstall call
- * supabase.auth.setSession() directly inside the Shopify iframe — no redirect chain.
- *
- * If Deno returns an opaque redirect (status 0 / no Location), returns null and the
- * caller falls back to the code-redirect approach.
+ * Exchange an email OTP (from generateLink's email_otp property) for a Supabase
+ * session by POSTing to /auth/v1/verify. GoTrue returns JSON tokens on POST —
+ * no redirect, no URL hash — which is the only approach that survives inside a
+ * Shopify App Bridge iframe (App Bridge strips URL hashes on re-embedding).
  */
-async function exchangeMagicLinkForSession(
-  magicLink: string,
+async function exchangeOtpForSession(
+  supabaseUrl: string,
+  supabaseAnonKey: string,
+  email: string,
+  emailOtp: string,
 ): Promise<{ access_token: string; refresh_token: string } | null> {
+  if (!emailOtp) return null;
   try {
-    const res = await fetchWithTimeout(magicLink, { redirect: "manual" }, 8000);
-    const location = res.headers.get("location") ?? "";
-    const hash = location.indexOf("#");
-    if (hash !== -1) {
-      const params = new URLSearchParams(location.substring(hash + 1));
-      const access_token = params.get("access_token");
-      const refresh_token = params.get("refresh_token") ?? "";
-      if (access_token) return { access_token, refresh_token };
+    const res = await fetchWithTimeout(`${supabaseUrl}/auth/v1/verify`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "apikey": supabaseAnonKey,
+      },
+      body: JSON.stringify({
+        email,
+        token: emailOtp,
+        type: "magiclink",
+        gotrue_meta_security: {},
+      }),
+    }, 8000);
+
+    if (!res.ok) {
+      const errText = await res.text().catch(() => "");
+      console.warn("[token-exchange] OTP verify HTTP error:", res.status, errText.substring(0, 200));
+      return null;
     }
-    console.warn(
-      "[token-exchange] server-side magic link exchange: no tokens. status=%d loc=%s",
-      res.status,
-      location.substring(0, 120),
-    );
-    return null;
+
+    const data = await res.json().catch(() => null);
+    if (!data?.access_token) {
+      console.warn("[token-exchange] OTP verify: no access_token in response");
+      return null;
+    }
+    return { access_token: data.access_token, refresh_token: data.refresh_token ?? "" };
   } catch (e: any) {
-    console.error("[token-exchange] server-side magic link exchange error:", e?.message);
+    console.error("[token-exchange] OTP exchange error:", e?.message);
     return null;
   }
 }
@@ -330,7 +348,7 @@ function normalizeOrigin(url?: string): string | null {
 async function issueMagicLink(
   supabase: any, email: string, fullName: string,
   shop: string, clientId: string | null, appUrlHint?: string,
-): Promise<string | null> {
+): Promise<{ link: string; otp: string } | null> {
   const dashboardUrl = resolveSafeDashboardUrl(appUrlHint);
   const redirectTo = `${dashboardUrl}/auth/shopify-callback?shop=${encodeURIComponent(shop)}`;
   const tryGenerate = () => supabase.auth.admin.generateLink({ type: "magiclink", email, options: { redirectTo } });
@@ -351,20 +369,18 @@ async function issueMagicLink(
   }
 
   const magicLink = data?.properties?.action_link;
+  const emailOtp  = data?.properties?.email_otp ?? "";
   const userId    = data?.user?.id;
   if (!magicLink) return null;
 
   if (userId) {
-    // NOTE: supabase-js v2 query builders are thenable but have NO .catch() —
-    // calling .upsert(...).catch() throws "catch is not a function". Always
-    // await + destructure the error instead.
     const { error: pErr } = await supabase.from("profiles").upsert(
       { id: userId, email, full_name: fullName, role: "client", client_id: clientId || null },
       { onConflict: "id", ignoreDuplicates: false },
     );
     if (pErr) console.error("[token-exchange] profile upsert:", pErr.message);
   }
-  return magicLink;
+  return { link: magicLink, otp: emailOtp };
 }
 
 /** Verify a Shopify session token JWT (HS256, signed with the app secret). */
