@@ -113,7 +113,11 @@ Deno.serve(async (req: Request) => {
         .maybeSingle();
       if (existing) {
         const link = await issueMagicLink(supabase, existing.shop_email, existing.shop_owner || existing.shop_name || shop, shop, existing.client_id, appUrlHint);
-        if (link) return json({ success: true, redirect: await toBreakoutUrl(supabase, link) });
+        if (link) {
+          const sessionTokens = await exchangeMagicLinkForSession(link);
+          if (sessionTokens) return json({ success: true, access_token: sessionTokens.access_token, refresh_token: sessionTokens.refresh_token });
+          return json({ success: true, redirect: await toBreakoutUrl(supabase, link) });
+        }
       }
       console.error(`[token-exchange] exchange failed: ${exchangeRes.status}`);
       return json({ success: false, error: "Token exchange failed" }, 502);
@@ -230,7 +234,18 @@ Deno.serve(async (req: Request) => {
       return json({ success: true, redirect: null });
     }
 
-    console.log(`[token-exchange] install + SSO ready for ${shop}`);
+    // Primary path: follow the magic link server-side to extract session tokens.
+    // ShopifyInstall receives them and calls supabase.auth.setSession() directly
+    // inside the Shopify iframe — no redirect chain, no top-frame breakout.
+    const sessionTokens = await exchangeMagicLinkForSession(magicLink);
+    if (sessionTokens) {
+      console.log(`[token-exchange] direct session tokens issued for ${shop}`);
+      return json({ success: true, access_token: sessionTokens.access_token, refresh_token: sessionTokens.refresh_token });
+    }
+
+    // Fallback: server-side exchange failed (magic link OTP NOT consumed), so the
+    // redirect approach still works.
+    console.log(`[token-exchange] fallback to redirect for ${shop}`);
     return json({ success: true, redirect: await toBreakoutUrl(supabase, magicLink) });
 
   } catch (err: any) {
@@ -240,6 +255,39 @@ Deno.serve(async (req: Request) => {
 });
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
+
+/**
+ * Follow the generated magic link server-side (with redirect:manual) to capture
+ * the session tokens from the Location header hash. This lets ShopifyInstall call
+ * supabase.auth.setSession() directly inside the Shopify iframe — no redirect chain.
+ *
+ * If Deno returns an opaque redirect (status 0 / no Location), returns null and the
+ * caller falls back to the code-redirect approach.
+ */
+async function exchangeMagicLinkForSession(
+  magicLink: string,
+): Promise<{ access_token: string; refresh_token: string } | null> {
+  try {
+    const res = await fetchWithTimeout(magicLink, { redirect: "manual" }, 8000);
+    const location = res.headers.get("location") ?? "";
+    const hash = location.indexOf("#");
+    if (hash !== -1) {
+      const params = new URLSearchParams(location.substring(hash + 1));
+      const access_token = params.get("access_token");
+      const refresh_token = params.get("refresh_token") ?? "";
+      if (access_token) return { access_token, refresh_token };
+    }
+    console.warn(
+      "[token-exchange] server-side magic link exchange: no tokens. status=%d loc=%s",
+      res.status,
+      location.substring(0, 120),
+    );
+    return null;
+  } catch (e: any) {
+    console.error("[token-exchange] server-side magic link exchange error:", e?.message);
+    return null;
+  }
+}
 
 /**
  * Convert a Supabase magic link into a one-time breakout URL.
