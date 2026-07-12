@@ -26,20 +26,15 @@ function json(body: unknown, status = 200) {
   });
 }
 
-// Run a background task without blocking the webhook response. Falls back to
-// awaiting when the runtime has no waitUntil (keeps correctness either way).
-function runInBackground(p: Promise<unknown>): Promise<unknown> | void {
-  const er = (globalThis as any).EdgeRuntime;
-  if (er && typeof er.waitUntil === 'function') { er.waitUntil(p); return; }
-  return p; // caller awaits the fallback
-}
+const er = (globalThis as any).EdgeRuntime;
+const hasWaitUntil = er && typeof er.waitUntil === 'function';
 
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response(null, { status: 200, headers: corsHeaders });
   if (req.method !== 'POST') return json({ error: 'POST required' }, 405);
 
   try {
-    // ── HMAC verification ────────────────────────────────────────────────────
+    // ── HMAC verification — only blocking work before the 200 ─────────────────
     const rawBody = await req.text();
     const hmacHeader = req.headers.get('X-Shopify-Hmac-Sha256') || '';
     if (!(await verifyShopifyWebhook(rawBody, hmacHeader))) {
@@ -47,211 +42,212 @@ Deno.serve(async (req: Request) => {
       return json({ error: 'Invalid webhook signature' }, 401);
     }
 
+    const order   = JSON.parse(rawBody);
+    const topic   = req.headers.get('X-Shopify-Topic') || '';
+    const shopDomain = req.headers.get('X-Shopify-Shop-Domain') || '';
+    if (!topic || !shopDomain) return json({ error: 'Missing topic or shop domain' }, 400);
+
+    console.log(`[shopify-order-webhook] waitUntil=${hasWaitUntil} topic=${topic} shop=${shopDomain} order=${order.id}`);
+
+    if (!topic.startsWith('orders/')) return json({ message: `Ignored non-order topic: ${topic}` });
+
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL')!,
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     );
 
-    const order = JSON.parse(rawBody);
-    const topic = req.headers.get('X-Shopify-Topic') || '';
-    const shopDomain = req.headers.get('X-Shopify-Shop-Domain') || '';
-
-    if (!topic || !shopDomain) return json({ error: 'Missing topic or shop domain' }, 400);
-
-    console.log(`[shopify-order-webhook] topic=${topic} shop=${shopDomain} order=${order.id}`);
-
-    if (!topic.startsWith('orders/')) {
-      return json({ message: `Ignored non-order topic: ${topic}` });
+    // ── All heavy DB work runs in the background so we respond to Shopify
+    //    within the 5-second deadline. If waitUntil is unavailable we fall
+    //    back to awaiting (same correctness, slower — catches misconfigured runtimes).
+    const bgTask = processOrder(supabase, order, topic, shopDomain);
+    if (hasWaitUntil) {
+      er.waitUntil(bgTask.catch((e: Error) =>
+        console.error('[shopify-order-webhook] background task failed:', e.message)
+      ));
+    } else {
+      await bgTask; // fallback: block until done (avoids data loss when no waitUntil)
     }
 
-    // ── Resolve client_id ────────────────────────────────────────────────────
-    let clientId: string | null = null;
-    const { data: si } = await supabase
-      .from('store_installations')
-      .select('client_id, id')
-      .eq('shop_domain', shopDomain)
-      .eq('installation_status', 'active')
-      .maybeSingle();
-    if (si) {
-      clientId = si.client_id;
-      await supabase.from('store_installations').update({ last_active_at: new Date().toISOString() }).eq('id', si.id);
-    }
-    if (!clientId) {
-      const { data: ic } = await supabase.from('integration_configs').select('client_id').eq('shop_domain', shopDomain).maybeSingle();
-      if (ic) clientId = ic.client_id;
-    }
-    // Permanent condition → 200. Returning 4xx/5xx would make Shopify retry
-    // forever and eventually auto-remove the webhook subscription.
-    if (!clientId) {
-      console.warn('[shopify-order-webhook] Shop not integrated (no-op):', shopDomain);
-      return json({ message: 'Shop not integrated — ignored' });
-    }
-
-    // ── Upsert order into shopify_orders (all order topics) ──────────────────
-    const customerEmail = order.customer?.email?.trim().toLowerCase() || null;
-    const customerPhone = order.customer?.phone?.trim() || null;
-    const orderRecord = {
-      client_id: clientId,
-      order_id: order.id?.toString(),
-      shopify_order_id: order.id?.toString(),
-      order_number: order.name || order.order_number?.toString() || null,
-      customer_email: customerEmail,
-      customer_phone: customerPhone,
-      total_price: parseFloat(order.total_price || '0'),
-      currency: order.currency || null,
-      financial_status: order.financial_status || null,
-      fulfillment_status: order.fulfillment_status || null,
-      order_status: order.cancelled_at ? 'cancelled' : (order.financial_status || 'pending'),
-      payment_method: order.payment_gateway || null,
-      processed_at: order.processed_at || order.created_at || new Date().toISOString(),
-      order_data: order,
-      synced_at: new Date().toISOString(),
-    };
-    const { error: orderUpsertErr } = await supabase
-      .from('shopify_orders')
-      .upsert(orderRecord, { onConflict: 'shopify_order_id' });
-    if (orderUpsertErr) console.error('[shopify-order-webhook] Order upsert failed:', orderUpsertErr.message);
-
-    // ── Award points synchronously (fast path) for orders/paid ───────────────
-    let pointsOutcome: Record<string, unknown> = { topic };
-    if (topic === 'orders/paid') {
-      pointsOutcome = await awardOrderPoints(supabase, clientId, order, customerEmail, customerPhone);
-    }
-
-    // ── Campaign evaluation + comms → background. The slow part (rule eval +
-    //    a live Shopify Admin API customer fetch) no longer blocks the webhook
-    //    response. Idempotent + re-run on the next order webhook, so deferring
-    //    is safe; points (above) stay synchronous and reliable. ──────────────
-    const transactionId = crypto.randomUUID();
-    const shopifyOrderName: string | null = order.name ?? null;
-    const bg = (async () => {
-      try {
-        await checkAndExecuteCampaignRules(supabase, clientId!, orderRecord, transactionId, shopifyOrderName);
-        await checkAdvancedCampaignRules(supabase, clientId!, order, orderRecord, transactionId, shopifyOrderName);
-        await processPendingCommunications(supabase);
-      } catch (e) {
-        console.error('[shopify-order-webhook] background campaign eval error:', (e as Error).message);
-      }
-    })();
-    const fallback = runInBackground(bg);
-    if (fallback) await fallback; // runtime lacks waitUntil → await before responding
-
-    return json({ success: true, ...pointsOutcome });
+    return json({ success: true, topic, shop: shopDomain });
   } catch (err) {
-    // Genuine transient/unexpected failure → 500 so Shopify retries.
     console.error('[shopify-order-webhook] Unhandled error:', (err as Error).message);
     return json({ error: 'Internal server error' }, 500);
   }
 });
 
-// ─── Points award (synchronous, idempotent) ──────────────────────────────────
-// Returns a small status object. Permanent/expected conditions resolve to a
-// no-op result (still HTTP 200 upstream); only true transient failures throw (→ 500).
+// ─── All order processing — runs in background ───────────────────────────────
+async function processOrder(supabase: any, order: any, topic: string, shopDomain: string) {
+  // ── Resolve client_id ──────────────────────────────────────────────────────
+  let clientId: string | null = null;
+  const { data: si } = await supabase
+    .from('store_installations')
+    .select('client_id, id')
+    .eq('shop_domain', shopDomain)
+    .eq('installation_status', 'active')
+    .maybeSingle();
+  if (si) {
+    clientId = si.client_id;
+    // fire-and-forget — don't await this housekeeping update
+    supabase.from('store_installations').update({ last_active_at: new Date().toISOString() }).eq('id', si.id);
+  }
+  if (!clientId) {
+    const { data: ic } = await supabase.from('integration_configs').select('client_id').eq('shop_domain', shopDomain).maybeSingle();
+    if (ic) clientId = ic.client_id;
+  }
+  if (!clientId) {
+    console.warn('[shopify-order-webhook] Shop not integrated (no-op):', shopDomain);
+    return;
+  }
+
+  // ── Upsert order + award points in parallel ────────────────────────────────
+  const customerEmail = order.customer?.email?.trim().toLowerCase() || null;
+  const customerPhone = order.customer?.phone?.trim() || null;
+  const orderRecord = {
+    client_id: clientId,
+    order_id: order.id?.toString(),
+    shopify_order_id: order.id?.toString(),
+    order_number: order.name || order.order_number?.toString() || null,
+    customer_email: customerEmail,
+    customer_phone: customerPhone,
+    total_price: parseFloat(order.total_price || '0'),
+    currency: order.currency || null,
+    financial_status: order.financial_status || null,
+    fulfillment_status: order.fulfillment_status || null,
+    order_status: order.cancelled_at ? 'cancelled' : (order.financial_status || 'pending'),
+    payment_method: order.payment_gateway || null,
+    processed_at: order.processed_at || order.created_at || new Date().toISOString(),
+    order_data: order,
+    synced_at: new Date().toISOString(),
+  };
+
+  const orderIsPaid = topic === 'orders/paid' || order.financial_status === 'paid';
+  const [, pointsOutcome] = await Promise.all([
+    // upsert order record
+    supabase.from('shopify_orders').upsert(orderRecord, { onConflict: 'shopify_order_id' })
+      .then(({ error: e }: any) => { if (e) console.error('[shopify-order-webhook] order upsert:', e.message); }),
+    // award points (parallelised internally)
+    orderIsPaid
+      ? awardOrderPoints(supabase, clientId, order, customerEmail, customerPhone)
+      : Promise.resolve({ status: 'not_paid', topic }),
+  ]);
+  console.log(`[shopify-order-webhook] points outcome:`, JSON.stringify(pointsOutcome));
+
+  // ── Campaign evaluation ────────────────────────────────────────────────────
+  const transactionId = crypto.randomUUID();
+  const shopifyOrderName: string | null = order.name ?? null;
+  try {
+    await Promise.all([
+      checkAndExecuteCampaignRules(supabase, clientId, orderRecord, transactionId, shopifyOrderName),
+      checkAdvancedCampaignRules(supabase, clientId, order, orderRecord, transactionId, shopifyOrderName),
+    ]);
+    await processPendingCommunications(supabase);
+  } catch (e) {
+    console.error('[shopify-order-webhook] campaign eval error:', (e as Error).message);
+  }
+}
+
+// ─── Points award (parallelised, idempotent) ─────────────────────────────────
 async function awardOrderPoints(
   supabase: any, clientId: string, order: any,
   customerEmail: string | null, customerPhone: string | null,
 ): Promise<Record<string, unknown>> {
   if (!customerEmail && !customerPhone) return { status: 'no_identity' };
 
-  const { data: program } = await supabase
-    .from('loyalty_programs').select('id').eq('client_id', clientId).eq('is_active', true).maybeSingle();
+  // Phase 1: loyalty program + member resolution in parallel
+  const [{ data: program }, { data: memberId, error: rpcErr }] = await Promise.all([
+    supabase.from('loyalty_programs').select('id').eq('client_id', clientId).eq('is_active', true).maybeSingle(),
+    supabase.rpc('resolve_or_create_member', {
+      p_client_id: clientId,
+      p_email: customerEmail,
+      p_phone: customerPhone,
+      p_name: [order.customer?.first_name, order.customer?.last_name].filter(Boolean).join(' ') || '',
+      p_external_id: order.customer?.id?.toString() || null,
+    }),
+  ]);
+
   if (!program?.id) {
     console.warn('[shopify-order-webhook] No active loyalty program (no-op):', clientId);
     return { status: 'no_active_program' };
   }
-
-  // Resolve/create member by email OR phone via the RPC (fixes the 42P10 upsert
-  // failure and enables phone-only identity).
-  const fullName = [order.customer?.first_name, order.customer?.last_name].filter(Boolean).join(' ') || '';
-  const { data: memberId, error: rpcErr } = await supabase.rpc('resolve_or_create_member', {
-    p_client_id: clientId,
-    p_email: customerEmail,
-    p_phone: customerPhone,
-    p_name: fullName,
-    p_external_id: order.customer?.id?.toString() || null,
-  });
-  if (rpcErr) throw new Error(`resolve_or_create_member: ${rpcErr.message}`); // transient → retry
+  if (rpcErr) throw new Error(`resolve_or_create_member: ${rpcErr.message}`);
   if (!memberId) return { status: 'no_member' };
 
-  await supabase.from('shopify_orders').update({ member_id: memberId }).eq('shopify_order_id', order.id.toString());
+  // Phase 2: tier, loyalty status, idempotency check — all in parallel
+  const [
+    { data: defaultTier },
+    { data: existingStatus },
+    { data: existingTxn },
+  ] = await Promise.all([
+    supabase.from('loyalty_tiers')
+      .select('id, points_earn_rate, points_earn_divisor')
+      .eq('loyalty_program_id', program.id).eq('is_default', true).maybeSingle(),
+    supabase.from('member_loyalty_status')
+      .select('id, points_balance, lifetime_points_earned, current_tier_id, total_orders, total_spend')
+      .eq('member_user_id', memberId).eq('loyalty_program_id', program.id).maybeSingle(),
+    supabase.from('loyalty_points_transactions')
+      .select('id').eq('member_user_id', memberId)
+      .eq('transaction_type', 'earned').eq('reference_id', order.id.toString()).maybeSingle(),
+    // fire-and-forget: link member to order row
+    supabase.from('shopify_orders').update({ member_id: memberId }).eq('shopify_order_id', order.id.toString()),
+  ]);
 
-  // Resolve a tier (default, else lowest-created)
-  let tierId: string | null = null;
-  const { data: defaultTier } = await supabase
-    .from('loyalty_tiers').select('id').eq('loyalty_program_id', program.id).eq('is_default', true).maybeSingle();
-  if (defaultTier?.id) tierId = defaultTier.id;
-  else {
-    const { data: firstTier } = await supabase
-      .from('loyalty_tiers').select('id').eq('loyalty_program_id', program.id)
-      .order('created_at', { ascending: true }).limit(1).maybeSingle();
-    tierId = firstTier?.id || null;
+  if (existingTxn) return { status: 'already_awarded' };
+
+  // Resolve tier (default → first created → none)
+  let tier = defaultTier;
+  if (!tier) {
+    const { data: firstTier } = await supabase.from('loyalty_tiers')
+      .select('id, points_earn_rate, points_earn_divisor')
+      .eq('loyalty_program_id', program.id).order('created_at', { ascending: true }).limit(1).maybeSingle();
+    tier = firstTier;
   }
-  if (!tierId) {
+  if (!tier) {
     console.warn('[shopify-order-webhook] No tier configured (no-op) program:', program.id);
     return { status: 'no_tier' };
   }
 
-  // Get-or-create loyalty status (this unique index is non-partial → onConflict OK)
-  const { data: upsertedStatus } = await supabase
-    .from('member_loyalty_status')
-    .upsert({
-      member_user_id: memberId,
-      loyalty_program_id: program.id,
-      current_tier_id: tierId,
-      points_balance: 0,
-      lifetime_points_earned: 0,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    }, { onConflict: 'member_user_id,loyalty_program_id', ignoreDuplicates: true })
-    .select('id, points_balance, lifetime_points_earned, current_tier_id, total_orders, total_spend')
-    .maybeSingle();
-
-  let status = upsertedStatus;
+  // Upsert loyalty status if it doesn't exist yet
+  let status = existingStatus;
   if (!status) {
-    const { data: existing } = await supabase
-      .from('member_loyalty_status')
+    const { data: upserted } = await supabase.from('member_loyalty_status')
+      .upsert({
+        member_user_id: memberId,
+        loyalty_program_id: program.id,
+        current_tier_id: tier.id,
+        points_balance: 0, lifetime_points_earned: 0,
+        created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+      }, { onConflict: 'member_user_id,loyalty_program_id', ignoreDuplicates: true })
       .select('id, points_balance, lifetime_points_earned, current_tier_id, total_orders, total_spend')
-      .eq('member_user_id', memberId).eq('loyalty_program_id', program.id).maybeSingle();
-    status = existing;
+      .maybeSingle();
+    if (!upserted) {
+      const { data: fetched } = await supabase.from('member_loyalty_status')
+        .select('id, points_balance, lifetime_points_earned, current_tier_id, total_orders, total_spend')
+        .eq('member_user_id', memberId).eq('loyalty_program_id', program.id).maybeSingle();
+      status = fetched;
+    } else {
+      status = upserted;
+    }
   }
-  if (!status) throw new Error('Failed to load loyalty status after upsert'); // transient → retry
+  if (!status) throw new Error('Failed to load loyalty status after upsert');
 
-  // Earn rates from current tier
-  let earnRate = 1, earnDivisor = 1;
-  if (status.current_tier_id) {
-    const { data: tier } = await supabase
-      .from('loyalty_tiers').select('points_earn_rate, points_earn_divisor').eq('id', status.current_tier_id).maybeSingle();
-    if (tier) { earnRate = tier.points_earn_rate || 1; earnDivisor = tier.points_earn_divisor || 1; }
-  }
-
-  const orderTotal = parseFloat(order.total_price || '0');
+  const earnRate    = tier.points_earn_rate    || 1;
+  const earnDivisor = tier.points_earn_divisor || 1;
+  const orderTotal  = parseFloat(order.total_price || '0');
   const pointsEarned = Math.floor((orderTotal / earnDivisor) * earnRate);
   if (pointsEarned <= 0) return { status: 'zero_points', order_total: orderTotal };
 
-  // Idempotency: already awarded for this order?
-  const { data: existingTxn } = await supabase
-    .from('loyalty_points_transactions')
-    .select('id').eq('member_user_id', memberId).eq('transaction_type', 'earned').eq('reference_id', order.id.toString()).maybeSingle();
-  if (existingTxn) return { status: 'already_awarded' };
-
-  const newBalance = (status.points_balance || 0) + pointsEarned;
+  const newBalance  = (status.points_balance || 0) + pointsEarned;
   const newLifetime = (status.lifetime_points_earned || 0) + pointsEarned;
 
-  const { error: updErr } = await supabase
-    .from('member_loyalty_status')
-    .update({
-      points_balance: newBalance,
-      lifetime_points_earned: newLifetime,
+  // Phase 3: update status + insert transaction in parallel
+  const [{ error: updErr }, { error: txnErr }] = await Promise.all([
+    supabase.from('member_loyalty_status').update({
+      points_balance: newBalance, lifetime_points_earned: newLifetime,
       total_orders: ((status as any).total_orders || 0) + 1,
       total_spend: ((status as any).total_spend || 0) + orderTotal,
       updated_at: new Date().toISOString(),
-    })
-    .eq('id', status.id);
-  if (updErr) throw new Error(`status update: ${updErr.message}`); // transient → retry
-
-  const { error: txnErr } = await supabase
-    .from('loyalty_points_transactions')
-    .insert({
+    }).eq('id', status.id),
+    supabase.from('loyalty_points_transactions').insert({
       member_loyalty_status_id: status.id,
       member_user_id: memberId,
       transaction_type: 'earned',
@@ -259,14 +255,17 @@ async function awardOrderPoints(
       balance_after: newBalance,
       reference_id: order.id.toString(),
       description: `Points earned on order ${order.name || '#' + order.id}`,
-    });
-  if (txnErr) throw new Error(`txn insert: ${txnErr.message}`); // transient → retry
+    }),
+  ]);
+
+  if (updErr) throw new Error(`status update: ${updErr.message}`);
+  if (txnErr) throw new Error(`txn insert: ${txnErr.message}`);
 
   console.log(`[shopify-order-webhook] Awarded ${pointsEarned} pts to member ${memberId} for order ${order.id}`);
   return { status: 'awarded', points_awarded: pointsEarned, new_balance: newBalance, order_id: order.id };
 }
 
-// ─── Campaign evaluation helpers (unchanged; now invoked in the background) ───
+// ─── Campaign evaluation helpers ──────────────────────────────────────────────
 
 async function logCampaignTrigger(
   supabase: any, clientId: string, campaignRuleId: string, orderRecord: any,
@@ -275,18 +274,12 @@ async function logCampaignTrigger(
 ) {
   try {
     await supabase.from('campaign_trigger_logs').insert({
-      client_id: clientId,
-      campaign_rule_id: campaignRuleId,
-      order_id: orderRecord.order_id,
-      order_number: orderRecord.order_number,
-      order_value: parseFloat(orderRecord.total_price),
-      trigger_result: result,
-      member_id: memberId,
-      membership_id: membershipId,
-      customer_email: orderRecord.customer_email,
-      customer_phone: orderRecord.customer_phone,
-      reason: reason,
-      metadata: metadata,
+      client_id: clientId, campaign_rule_id: campaignRuleId,
+      order_id: orderRecord.order_id, order_number: orderRecord.order_number,
+      order_value: parseFloat(orderRecord.total_price), trigger_result: result,
+      member_id: memberId, membership_id: membershipId,
+      customer_email: orderRecord.customer_email, customer_phone: orderRecord.customer_phone,
+      reason, metadata,
       transaction_id: metadata.transaction_id ?? null,
       reward_link: metadata.reward_link ?? null,
       campaign_display_id: metadata.campaign_display_id ?? null,
@@ -322,20 +315,20 @@ function evaluateConditionLocally(condition: any, context: any): boolean {
       case 'order_item_count': {
         const count = order.line_items?.length || 0;
         if (operator === 'gte') return count >= parseInt(value);
-        if (operator === 'eq') return count === parseInt(value);
+        if (operator === 'eq')  return count === parseInt(value);
         if (operator === 'lte') return count <= parseInt(value);
         return false;
       }
       case 'payment_method': {
-        const gw = order.gateway?.toLowerCase() || '';
+        const gw  = order.gateway?.toLowerCase() || '';
         const pgn = order.payment_gateway_names?.[0]?.toLowerCase() || '';
-        if (value === 'cod') return gw.includes('cod') || pgn.includes('cash');
+        if (value === 'cod')     return gw.includes('cod') || pgn.includes('cash');
         if (value === 'prepaid') return !gw.includes('cod') && !pgn.includes('cash');
         return false;
       }
       case 'customer_type': {
         const oc = customer?.orders_count || 0;
-        if (value === 'new') return oc <= 1;
+        if (value === 'new')       return oc <= 1;
         if (value === 'returning') return oc > 1;
         return false;
       }
@@ -347,28 +340,28 @@ function evaluateConditionLocally(condition: any, context: any): boolean {
       }
       case 'shipping_city': {
         const city = order.shipping_address?.city?.toLowerCase() || '';
-        const sv = value.toLowerCase();
-        if (operator === 'exact') return city === sv;
+        const sv   = value.toLowerCase();
+        if (operator === 'exact')   return city === sv;
         if (operator === 'in_list') return value.split(',').map((v: string) => v.trim().toLowerCase()).includes(city);
         return false;
       }
       case 'shipping_pincode': {
         const pin = order.shipping_address?.zip || '';
-        if (operator === 'exact') return pin === value;
+        if (operator === 'exact')       return pin === value;
         if (operator === 'starts_with') return pin.startsWith(value);
-        if (operator === 'in_list') return value.split(',').map((v: string) => v.trim()).includes(pin);
+        if (operator === 'in_list')     return value.split(',').map((v: string) => v.trim()).includes(pin);
         return false;
       }
       case 'shipping_state': {
         const state = order.shipping_address?.province?.toLowerCase() || '';
-        const sv = value.toLowerCase();
-        if (operator === 'exact') return state === sv;
+        const sv    = value.toLowerCase();
+        if (operator === 'exact')   return state === sv;
         if (operator === 'in_list') return value.split(',').map((v: string) => v.trim().toLowerCase()).includes(state);
         return false;
       }
       case 'collection_contains': {
         const items: any[] = order.line_items || [];
-        const sv = value.toLowerCase();
+        const sv   = value.toLowerCase();
         const tags = (order.tags || '').toLowerCase().split(',').map((t: string) => t.trim());
         if (tags.includes(sv)) return true;
         return items.some((i: any) =>
@@ -394,41 +387,23 @@ async function checkAdvancedCampaignRules(
     const { data: rules, error } = await supabase
       .from('campaign_rules')
       .select('*, membership_programs(*)')
-      .eq('client_id', clientId)
-      .eq('is_active', true)
-      .eq('trigger_type', 'advanced')
-      .eq('rule_version', 2);
+      .eq('client_id', clientId).eq('is_active', true)
+      .eq('trigger_type', 'advanced').eq('rule_version', 2);
 
     if (error) { console.error('[shopify-order-webhook] Error fetching advanced rules:', error); return; }
     if (!rules || rules.length === 0) return;
 
-    let customer = null;
-    if (orderData.customer?.id) {
-      const { data: store } = await supabase
-        .from('store_installations')
-        .select('access_token, shop_domain')
-        .eq('client_id', clientId)
-        .eq('installation_status', 'active')
-        .maybeSingle();
-      if (store?.access_token) {
-        try {
-          const plainToken = await decryptToken(store.access_token);
-          const res = await fetch(
-            `https://${store.shop_domain}/admin/api/2026-01/customers/${orderData.customer.id}.json`,
-            { headers: { 'X-Shopify-Access-Token': plainToken } }
-          );
-          if (res.ok) customer = (await res.json()).customer;
-        } catch (e) { console.error('[shopify-order-webhook] Error fetching customer:', e); }
-      }
-    }
+    // Use customer data from the order payload directly — avoids a live Shopify
+    // API call (was adding 1–3 s per webhook). The webhook payload already
+    // includes orders_count, total_spent, tags and other fields that campaign
+    // conditions need for customer_type / lifetime_orders checks.
+    const customer = orderData.customer || null;
 
     for (const rule of rules) {
       try {
         const { data: existing } = await supabase
-          .from('campaign_trigger_logs')
-          .select('id, trigger_result')
-          .eq('campaign_rule_id', rule.id)
-          .eq('order_id', orderRecord.order_id)
+          .from('campaign_trigger_logs').select('id, trigger_result')
+          .eq('campaign_rule_id', rule.id).eq('order_id', orderRecord.order_id)
           .in('trigger_result', ['success', 'already_enrolled', 'max_reached', 'below_threshold', 'not_matched'])
           .maybeSingle();
         if (existing) continue;
@@ -443,14 +418,14 @@ async function checkAdvancedCampaignRules(
           if (m) memberId = m.id;
         }
         const ruleMode = rule.rule_mode || 'membership';
-        if (!memberId && ruleMode === 'standalone' && orderRecord.customer_email) {
+        if (!memberId && (ruleMode === 'standalone' || ruleMode === 'instant_reward') && orderRecord.customer_email) {
           const { data: nm } = await supabase.from('member_users')
             .insert({ client_id: clientId, email: orderRecord.customer_email, full_name: orderRecord.customer_email })
             .select('id').single();
           if (nm) memberId = nm.id;
         }
         if (!memberId) {
-          await logCampaignTrigger(supabase, clientId, rule.id, orderRecord, 'no_member', 'No member found for this order', null, null, { campaign_name: rule.name, rule_type: 'advanced', transaction_id: transactionId, campaign_display_id: rule.campaign_id, shopify_order_name: shopifyOrderName });
+          await logCampaignTrigger(supabase, clientId, rule.id, orderRecord, 'no_member', 'No member found for this order', null, null, { campaign_name: rule.name, rule_type: ruleMode, transaction_id: transactionId, campaign_display_id: rule.campaign_id, shopify_order_name: shopifyOrderName });
           continue;
         }
 
@@ -462,45 +437,42 @@ async function checkAdvancedCampaignRules(
           }
         }
 
-        const ctx = { order: orderData, customer: customer || { email: orderRecord.customer_email, phone: orderRecord.customer_phone }, clientId };
-        const triggerR = evaluateConditionsLocally(rule.trigger_conditions || [], ctx);
-        const eligibilityR = evaluateConditionsLocally(rule.eligibility_conditions || [], ctx);
-        const locationR = evaluateConditionsLocally(rule.location_conditions || [], ctx);
-        const attributionR = evaluateConditionsLocally(rule.attribution_conditions || [], ctx);
+        const ctx = { order: orderData, customer, clientId };
+        const toArr = (v: any) => Array.isArray(v) ? v : [];
+        const triggerR     = evaluateConditionsLocally(toArr(rule.trigger_conditions), ctx);
+        const eligibilityR = evaluateConditionsLocally(toArr(rule.eligibility_conditions), ctx);
+        const locationR    = evaluateConditionsLocally(toArr(rule.location_conditions), ctx);
+        const attributionR = evaluateConditionsLocally(toArr(rule.attribution_conditions), ctx);
         const allPassed = triggerR.allPassed &&
           (!(rule.eligibility_conditions?.length) || eligibilityR.allPassed) &&
-          (!(rule.location_conditions?.length) || locationR.allPassed) &&
+          (!(rule.location_conditions?.length)    || locationR.allPassed) &&
           (!(rule.attribution_conditions?.length) || attributionR.allPassed);
 
         if (allPassed) {
-          if (ruleMode === 'standalone') {
+          if (ruleMode === 'standalone' || ruleMode === 'instant_reward') {
             const expiresAt = new Date();
             expiresAt.setHours(expiresAt.getHours() + (rule.link_expiry_hours || 72));
             let resolvedToken: string | null = null;
             const shopifyOrderRef = orderRecord.shopify_order_id;
-            const { data: nt } = await supabase
+            const { data: nt, error: ntErr } = await supabase
               .from('campaign_tokens')
-              .upsert(
-                { campaign_rule_id: rule.id, shopify_order_ref: shopifyOrderRef, member_id: memberId, email: orderRecord.customer_email, phone: orderRecord.customer_phone || null, is_pre_verified: true, expires_at: expiresAt.toISOString() },
-                { onConflict: 'campaign_rule_id,shopify_order_ref', ignoreDuplicates: true }
-              )
-              .select('token')
-              .maybeSingle();
+              .insert({ campaign_rule_id: rule.id, shopify_order_ref: shopifyOrderRef, member_id: memberId, email: orderRecord.customer_email, phone: orderRecord.customer_phone || null, is_pre_verified: true, expires_at: expiresAt.toISOString() })
+              .select('token').single();
             if (nt) {
               resolvedToken = nt.token;
-            } else {
-              const { data: existing2, error: te } = await supabase
+            } else if (ntErr?.code === '23505') {
+              const { data: existing2 } = await supabase
                 .from('campaign_tokens').select('token').eq('campaign_rule_id', rule.id).eq('shopify_order_ref', shopifyOrderRef).maybeSingle();
-              if (te || !existing2) {
-                await logCampaignTrigger(supabase, clientId, rule.id, orderRecord, 'failed', `Token creation failed: ${te?.message ?? 'not found'}`, memberId, null, { campaign_name: rule.name, rule_type: 'standalone', transaction_id: transactionId, campaign_display_id: rule.campaign_id, shopify_order_name: shopifyOrderName });
-                continue;
-              }
-              resolvedToken = existing2.token;
+              if (existing2) resolvedToken = existing2.token;
+            }
+            if (!resolvedToken) {
+              await logCampaignTrigger(supabase, clientId, rule.id, orderRecord, 'failed', `Token creation failed: ${ntErr?.message ?? 'not found'}`, memberId, null, { campaign_name: rule.name, rule_type: ruleMode, transaction_id: transactionId, campaign_display_id: rule.campaign_id, shopify_order_name: shopifyOrderName });
+              continue;
             }
             await supabase.rpc('increment_campaign_enrollments', { campaign_id: rule.id });
             await supabase.from('communication_logs').insert({ client_id: clientId, member_id: memberId, campaign_rule_id: rule.id, type: 'standalone_reward_link', status: 'queued', metadata: { token: resolvedToken, expires_at: expiresAt.toISOString(), order_id: orderRecord.order_id, campaign_name: rule.name } });
-            const claimUrl = `${Deno.env.get('FRONTEND_URL') || 'https://goself.netlify.app'}/claim-rewards?token=${resolvedToken}`;
-            await logCampaignTrigger(supabase, clientId, rule.id, orderRecord, 'success', 'Standalone campaign token issued', memberId, null, { campaign_name: rule.name, rule_type: 'standalone', token: resolvedToken, reward_link: claimUrl, transaction_id: transactionId, campaign_display_id: rule.campaign_id, shopify_order_name: shopifyOrderName });
+            const claimUrl = `${Deno.env.get('FRONTEND_URL') || 'https://app.goself.in'}/claim-rewards?token=${resolvedToken}`;
+            await logCampaignTrigger(supabase, clientId, rule.id, orderRecord, 'success', `${ruleMode === 'instant_reward' ? 'Instant reward' : 'Standalone'} campaign token issued`, memberId, null, { campaign_name: rule.name, rule_type: ruleMode, token: resolvedToken, reward_link: claimUrl, transaction_id: transactionId, campaign_display_id: rule.campaign_id, shopify_order_name: shopifyOrderName });
           } else {
             const validityDays = rule.membership_programs?.validity_days || 365;
             const exp = new Date(); exp.setDate(exp.getDate() + validityDays);
@@ -519,7 +491,7 @@ async function checkAdvancedCampaignRules(
           }
         } else {
           const failed = [...triggerR.failed, ...eligibilityR.failed, ...locationR.failed, ...attributionR.failed];
-          await logCampaignTrigger(supabase, clientId, rule.id, orderRecord, 'not_matched', `Conditions not met: ${failed.join(', ')}`, memberId, null, { campaign_name: rule.name, rule_type: 'advanced', failed_conditions: failed, transaction_id: transactionId, campaign_display_id: rule.campaign_id, shopify_order_name: shopifyOrderName });
+          await logCampaignTrigger(supabase, clientId, rule.id, orderRecord, 'not_matched', `Conditions not met: ${failed.join(', ')}`, memberId, null, { campaign_name: rule.name, rule_type: ruleMode, failed_conditions: failed, transaction_id: transactionId, campaign_display_id: rule.campaign_id, shopify_order_name: shopifyOrderName });
         }
       } catch (ruleErr) {
         console.error(`[shopify-order-webhook] Error evaluating rule "${rule.name}":`, ruleErr);
@@ -536,17 +508,16 @@ async function checkAndExecuteCampaignRules(
 ) {
   try {
     const { data: rules, error } = await supabase
-      .from('campaign_rules')
-      .select('*, membership_programs(*)')
-      .eq('client_id', clientId)
-      .eq('is_active', true)
-      .eq('trigger_type', 'order_value');
+      .from('campaign_rules').select('*, membership_programs(*)')
+      .eq('client_id', clientId).eq('is_active', true).eq('trigger_type', 'order_value');
     if (error || !rules || rules.length === 0) return;
 
     const sorted = rules.sort((a: any, b: any) => (b.trigger_conditions?.min_order_value || 0) - (a.trigger_conditions?.min_order_value || 0));
     for (const rule of sorted) {
       const minVal = rule.trigger_conditions?.min_order_value || 0;
-      const { data: existing } = await supabase.from('campaign_trigger_logs').select('id').eq('campaign_rule_id', rule.id).eq('order_id', orderRecord.order_id).in('trigger_result', ['success', 'already_enrolled', 'max_reached', 'below_threshold', 'not_matched']).maybeSingle();
+      const { data: existing } = await supabase.from('campaign_trigger_logs').select('id')
+        .eq('campaign_rule_id', rule.id).eq('order_id', orderRecord.order_id)
+        .in('trigger_result', ['success', 'already_enrolled', 'max_reached', 'below_threshold', 'not_matched']).maybeSingle();
       if (existing) continue;
 
       if (parseFloat(orderRecord.total_price) >= minVal) {
