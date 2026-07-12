@@ -53,7 +53,14 @@ Deno.serve(async (req: Request) => {
 
   try {
     const body = await req.json().catch(() => ({}));
-    const sessionToken = (body.session_token ?? body.id_token) as string | undefined;
+    // Read session token from Authorization header first (satisfies Shopify's
+    // "session tokens for user authentication" App Store check), then fall back
+    // to body for any cached/old frontend builds still in flight.
+    const sessionToken = (
+      req.headers.get("Authorization")?.replace(/^Bearer\s+/i, "") ||
+      body.session_token ||
+      body.id_token
+    ) as string | undefined;
     const shopRaw      = body.shop as string | undefined;
     const appUrlHint   = body.app_url as string | undefined;
 
@@ -114,7 +121,7 @@ Deno.serve(async (req: Request) => {
       if (existing) {
         const ml = await issueMagicLink(supabase, existing.shop_email, existing.shop_owner || existing.shop_name || shop, shop, existing.client_id, appUrlHint);
         if (ml) {
-          const sessionTokens = await exchangeOtpForSession(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_ANON_KEY")!, existing.shop_email, ml.otp);
+          const sessionTokens = await exchangeOtpForSession(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_ANON_KEY")!, existing.shop_email, ml.otp, ml.hashedToken);
           if (sessionTokens) return json({ success: true, access_token: sessionTokens.access_token, refresh_token: sessionTokens.refresh_token });
           return json({ success: true, redirect: await toBreakoutUrl(supabase, ml.link) });
         }
@@ -243,6 +250,7 @@ Deno.serve(async (req: Request) => {
       Deno.env.get("SUPABASE_ANON_KEY")!,
       merchantEmail,
       ml.otp,
+      ml.hashedToken,
     );
     if (sessionTokens) {
       console.log(`[token-exchange] direct session tokens issued for ${shop}`);
@@ -262,45 +270,57 @@ Deno.serve(async (req: Request) => {
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
 /**
- * Exchange an email OTP (from generateLink's email_otp property) for a Supabase
- * session by POSTing to /auth/v1/verify. GoTrue returns JSON tokens on POST —
- * no redirect, no URL hash — which is the only approach that survives inside a
- * Shopify App Bridge iframe (App Bridge strips URL hashes on re-embedding).
+ * Exchange an OTP for a Supabase session by POSTing to /auth/v1/verify.
+ * GoTrue returns JSON tokens on POST — no redirect, no URL hash.
+ * Tries token_hash (hashed_token from generateLink) first; if that fails or is
+ * absent, falls back to email + email_otp. token_hash is more reliable across
+ * GoTrue versions because some versions omit email_otp in the generateLink response.
  */
 async function exchangeOtpForSession(
   supabaseUrl: string,
   supabaseAnonKey: string,
   email: string,
   emailOtp: string,
+  hashedToken: string = "",
 ): Promise<{ access_token: string; refresh_token: string } | null> {
-  if (!emailOtp) return null;
-  try {
+  if (!emailOtp && !hashedToken) {
+    console.warn("[token-exchange] OTP exchange: both emailOtp and hashedToken are empty");
+    return null;
+  }
+
+  const verify = async (body: Record<string, unknown>) => {
     const res = await fetchWithTimeout(`${supabaseUrl}/auth/v1/verify`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "apikey": supabaseAnonKey,
-      },
-      body: JSON.stringify({
-        email,
-        token: emailOtp,
-        type: "magiclink",
-        gotrue_meta_security: {},
-      }),
+      headers: { "Content-Type": "application/json", "apikey": supabaseAnonKey },
+      body: JSON.stringify(body),
     }, 8000);
-
     if (!res.ok) {
       const errText = await res.text().catch(() => "");
-      console.warn("[token-exchange] OTP verify HTTP error:", res.status, errText.substring(0, 200));
+      console.warn(`[token-exchange] verify HTTP ${res.status}:`, errText.substring(0, 200));
       return null;
     }
-
     const data = await res.json().catch(() => null);
     if (!data?.access_token) {
-      console.warn("[token-exchange] OTP verify: no access_token in response");
+      console.warn("[token-exchange] verify: no access_token. keys:", Object.keys(data ?? {}).join(","));
       return null;
     }
     return { access_token: data.access_token, refresh_token: data.refresh_token ?? "" };
+  };
+
+  try {
+    // Primary: token_hash approach — works across GoTrue versions, no email needed
+    if (hashedToken) {
+      const result = await verify({ token_hash: hashedToken, type: "magiclink" });
+      if (result) { console.log("[token-exchange] session via token_hash"); return result; }
+    }
+
+    // Fallback: email + email_otp (raw OTP, GoTrue hashes it server-side)
+    if (emailOtp) {
+      const result = await verify({ email, token: emailOtp, type: "magiclink" });
+      if (result) { console.log("[token-exchange] session via email_otp"); return result; }
+    }
+
+    return null;
   } catch (e: any) {
     console.error("[token-exchange] OTP exchange error:", e?.message);
     return null;
@@ -348,7 +368,7 @@ function normalizeOrigin(url?: string): string | null {
 async function issueMagicLink(
   supabase: any, email: string, fullName: string,
   shop: string, clientId: string | null, appUrlHint?: string,
-): Promise<{ link: string; otp: string } | null> {
+): Promise<{ link: string; otp: string; hashedToken: string } | null> {
   const dashboardUrl = resolveSafeDashboardUrl(appUrlHint);
   const redirectTo = `${dashboardUrl}/auth/shopify-callback?shop=${encodeURIComponent(shop)}`;
   const tryGenerate = () => supabase.auth.admin.generateLink({ type: "magiclink", email, options: { redirectTo } });
@@ -368,10 +388,13 @@ async function issueMagicLink(
     data = retry.data;
   }
 
-  const magicLink = data?.properties?.action_link;
-  const emailOtp  = data?.properties?.email_otp ?? "";
-  const userId    = data?.user?.id;
+  const magicLink   = data?.properties?.action_link;
+  const emailOtp    = data?.properties?.email_otp    ?? "";
+  const hashedToken = data?.properties?.hashed_token ?? "";
+  const userId      = data?.user?.id;
   if (!magicLink) return null;
+
+  console.log(`[token-exchange] generateLink otp_len=${emailOtp.length} hash_len=${hashedToken.length}`);
 
   if (userId) {
     const { error: pErr } = await supabase.from("profiles").upsert(
@@ -380,7 +403,7 @@ async function issueMagicLink(
     );
     if (pErr) console.error("[token-exchange] profile upsert:", pErr.message);
   }
-  return { link: magicLink, otp: emailOtp };
+  return { link: magicLink, otp: emailOtp, hashedToken };
 }
 
 /** Verify a Shopify session token JWT (HS256, signed with the app secret). */
