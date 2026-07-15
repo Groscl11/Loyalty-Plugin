@@ -15,7 +15,7 @@ function json(data: unknown, status = 200) {
   });
 }
 
-// Extension handle as defined in shopify.extension.toml
+// Extension UUID from shopify.extension.toml
 const EXTENSION_UID = "63dc22e1-27da-358d-1f2a-1e6d9b60e4b66a03a917";
 
 // All 11 known block slugs (filename without .liquid)
@@ -32,6 +32,38 @@ const KNOWN_BLOCKS = [
   "pre-purchase-product-strip",
   "refer-a-friend",
 ];
+
+async function fetchAsset(shop: string, themeId: number, key: string, token: string): Promise<string> {
+  const r = await fetch(
+    `https://${shop}/admin/api/2024-01/themes/${themeId}/assets.json?asset[key]=${encodeURIComponent(key)}`,
+    { headers: { "X-Shopify-Access-Token": token } }
+  );
+  if (!r.ok) return "";
+  const d = await r.json();
+  return d.asset?.value || "";
+}
+
+function detectBlocks(content: string, placedSet: Set<string>) {
+  if (!content) return;
+
+  for (const slug of KNOWN_BLOCKS) {
+    // Most reliable: Shopify stores app blocks as
+    // "shopify://apps/{handle}/blocks/{slug}/{uid}"
+    // The /blocks/{slug}/ segment is unique to our extension regardless of handle or UID format.
+    if (
+      content.includes(`/blocks/${slug}/`) ||
+      content.includes(`/blocks/${slug}"`) ||
+      // Also match if the full UID happens to appear alongside the slug
+      (content.includes(EXTENSION_UID) && content.includes(slug)) ||
+      // Legacy / older section schema formats
+      content.includes(`"loyalty-widget/${slug}"`) ||
+      content.includes(`loyalty-widget/${slug}`) ||
+      content.includes(`"type": "${slug}"`)
+    ) {
+      placedSet.add(slug);
+    }
+  }
+}
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
@@ -50,7 +82,6 @@ Deno.serve(async (req: Request) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    // Verify JWT and get client_id
     const anonClient = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_ANON_KEY")!,
@@ -68,7 +99,6 @@ Deno.serve(async (req: Request) => {
 
     const clientId = profile.client_id;
 
-    // Get active store installation for this client
     const { data: installation } = await supabase
       .from("store_installations")
       .select("access_token, shop_domain")
@@ -77,80 +107,71 @@ Deno.serve(async (req: Request) => {
       .maybeSingle();
 
     if (!installation?.access_token || !installation?.shop_domain) {
-      // No Shopify store connected — all blocks are unplaced
-      return json({
-        connected: false,
-        placed: [],
-        cache_seconds: 300,
-      });
+      return json({ connected: false, placed: [], cache_seconds: 300 });
     }
 
     const shop = installation.shop_domain;
     const token = await decryptToken(installation.access_token);
 
-    // Step 1: Get active theme ID
+    // Step 1: Get active theme
     const themesRes = await fetch(
       `https://${shop}/admin/api/2024-01/themes.json?role=main`,
-      { headers: { "X-Shopify-Access-Token": token, "Content-Type": "application/json" } }
+      { headers: { "X-Shopify-Access-Token": token } }
     );
     if (!themesRes.ok) {
-      console.error("Themes fetch failed:", await themesRes.text());
-      return json({ error: "Failed to fetch Shopify themes" }, 502);
+      const errBody = await themesRes.text();
+      console.error("Themes fetch failed:", themesRes.status, errBody);
+      if (themesRes.status === 403 || themesRes.status === 401) {
+        // read_themes scope not granted — return connected:true so the UI knows
+        // the store is linked but can't read themes yet (re-auth required)
+        return json({
+          connected: true,
+          placed: [],
+          theme_name: null,
+          scope_missing: true,
+          cache_seconds: 60,
+        });
+      }
+      return json({ connected: true, placed: [], theme_name: null, cache_seconds: 60 });
     }
     const themesData = await themesRes.json();
     const activeTheme = (themesData.themes || []).find((t: any) => t.role === "main");
     if (!activeTheme) {
       return json({ connected: true, placed: [], cache_seconds: 300 });
     }
-    const themeId = activeTheme.id;
+    const themeId: number = activeTheme.id;
 
-    // Step 2: List all assets to find template JSON files
+    // Step 2: List all assets
     const assetsRes = await fetch(
       `https://${shop}/admin/api/2024-01/themes/${themeId}/assets.json`,
-      { headers: { "X-Shopify-Access-Token": token, "Content-Type": "application/json" } }
+      { headers: { "X-Shopify-Access-Token": token } }
     );
     if (!assetsRes.ok) {
       console.error("Assets list failed:", await assetsRes.text());
       return json({ error: "Failed to list theme assets" }, 502);
     }
-    const assetsData = await assetsRes.json();
-    const allAssets: { key: string }[] = assetsData.assets || [];
+    const allAssets: { key: string }[] = (await assetsRes.json()).assets || [];
 
-    // Filter to section and template JSON files that could contain extension blocks
-    const jsonAssets = allAssets.filter((a) =>
-      a.key.endsWith(".json") &&
-      (a.key.startsWith("templates/") || a.key.startsWith("sections/"))
+    // Step 3: Identify assets to scan
+    // - templates/*.json  → section/block placements per page template
+    // - sections/*.json   → section-level block placements
+    // - config/settings_data.json → app embed blocks (floating widgets, banners)
+    const assetsToScan = allAssets.filter((a) =>
+      (a.key.endsWith(".json") &&
+        (a.key.startsWith("templates/") || a.key.startsWith("sections/"))) ||
+      a.key === "config/settings_data.json"
     );
 
-    // Step 3: Fetch each JSON file and scan for our extension block references
-    // Block type string in Shopify JSON: "shopify://apps/{handle}/blocks/{block-slug}/{uid}"
-    // or as type: "loyalty-widget/{block-slug}" in older section schema
-    // We search for the UID prefix which is unique to our extension
+    // Step 4: Fetch each asset and detect block placements
     const placedSet = new Set<string>();
 
     await Promise.all(
-      jsonAssets.map(async (asset) => {
+      assetsToScan.map(async (asset) => {
         try {
-          const r = await fetch(
-            `https://${shop}/admin/api/2024-01/themes/${themeId}/assets.json?asset[key]=${encodeURIComponent(asset.key)}`,
-            { headers: { "X-Shopify-Access-Token": token, "Content-Type": "application/json" } }
-          );
-          if (!r.ok) return;
-          const d = await r.json();
-          const content: string = d.asset?.value || "";
-          if (!content.includes(EXTENSION_UID)) return;
-
-          // Find which specific blocks are placed
-          for (const blockSlug of KNOWN_BLOCKS) {
-            if (content.includes(`${EXTENSION_UID}/${blockSlug}`) || content.includes(`"${blockSlug}"`)) {
-              // More precise: check for the UID with block slug
-              if (content.includes(EXTENSION_UID) && content.includes(blockSlug)) {
-                placedSet.add(blockSlug);
-              }
-            }
-          }
+          const content = await fetchAsset(shop, themeId, asset.key, token);
+          detectBlocks(content, placedSet);
         } catch {
-          // skip individual asset errors
+          // skip asset errors silently
         }
       })
     );
