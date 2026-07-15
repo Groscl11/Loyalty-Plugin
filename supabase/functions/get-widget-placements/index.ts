@@ -162,19 +162,20 @@ Deno.serve(async (req: Request) => {
       a.key === "config/settings_data.json"
     );
 
-    // Step 4: Fetch each asset and detect block placements
+    // Step 4: Fetch each asset and detect block placements.
+    // Sequential to respect Shopify REST rate limits (2 req/s burst).
+    // Exit early once every known block is found.
     const placedSet = new Set<string>();
 
-    await Promise.all(
-      assetsToScan.map(async (asset) => {
-        try {
-          const content = await fetchAsset(shop, themeId, asset.key, token);
-          detectBlocks(content, placedSet);
-        } catch {
-          // skip asset errors silently
-        }
-      })
-    );
+    for (const asset of assetsToScan) {
+      if (placedSet.size === KNOWN_BLOCKS.length) break;
+      try {
+        const content = await fetchAsset(shop, themeId, asset.key, token);
+        detectBlocks(content, placedSet);
+      } catch {
+        // skip asset errors silently
+      }
+    }
 
     return json({
       connected: true,
