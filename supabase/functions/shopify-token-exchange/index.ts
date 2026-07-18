@@ -304,7 +304,11 @@ async function exchangeOtpForSession(
       console.warn("[token-exchange] verify: no access_token. keys:", Object.keys(data ?? {}).join(","));
       return null;
     }
-    return { access_token: data.access_token, refresh_token: data.refresh_token ?? "" };
+    if (!data.refresh_token) {
+      console.warn("[token-exchange] GoTrue verify: no refresh_token in response. Keys:", Object.keys(data ?? {}).join(","));
+      return null;
+    }
+    return { access_token: data.access_token, refresh_token: data.refresh_token };
   };
 
   try {
