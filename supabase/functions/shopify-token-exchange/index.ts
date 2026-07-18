@@ -64,13 +64,8 @@ Deno.serve(async (req: Request) => {
     const shopRaw      = body.shop as string | undefined;
     const appUrlHint   = body.app_url as string | undefined;
 
-    if (!sessionToken || !shopRaw) {
-      return json({ success: false, error: "session_token and shop are required" }, 400);
-    }
-
-    const shop = shopRaw.trim().toLowerCase();
-    if (!/^[a-zA-Z0-9-]+\.myshopify\.com$/.test(shop)) {
-      return json({ success: false, error: "Invalid shop domain" }, 400);
+    if (!sessionToken) {
+      return json({ success: false, error: "session_token is required" }, 400);
     }
 
     const SHOPIFY_KEY = Deno.env.get("SHOPIFY_API_KEY") || "";
@@ -81,15 +76,26 @@ Deno.serve(async (req: Request) => {
     }
 
     // ── 1. Verify the Shopify session token (id_token JWT) ───────────────────
+    // Verify BEFORE using shopRaw — the verified dest claim is a trusted fallback
+    // for shop when the body field is absent (e.g. App Bridge config shape changed).
     const claims = await verifySessionToken(sessionToken, SHOPIFY_SEC, SHOPIFY_KEY).catch((e) => {
       console.error("[token-exchange] session token verify failed:", e?.message ?? e);
       return null;
     });
     if (!claims) return json({ success: false, error: "Invalid session token" }, 401);
 
-    // `dest` is https://{shop} — it MUST match the posted shop (anti-injection)
+    // `dest` is https://{shop} — extract the host as canonical shop domain.
     const destShop = (claims.dest || "").replace(/^https?:\/\//, "").replace(/\/.*$/, "").toLowerCase();
-    if (destShop !== shop) {
+
+    // Prefer the body-supplied shop; fall back to the JWT dest claim.
+    const shop = (shopRaw ? shopRaw.trim().toLowerCase() : destShop);
+
+    if (!shop || !/^[a-zA-Z0-9-]+\.myshopify\.com$/.test(shop)) {
+      return json({ success: false, error: "Invalid shop domain" }, 400);
+    }
+
+    // When both are present they MUST match (anti cross-shop injection).
+    if (shopRaw && destShop && destShop !== shop) {
       console.error(`[token-exchange] dest/shop mismatch: dest=${destShop} shop=${shop}`);
       return json({ success: false, error: "Shop mismatch" }, 401);
     }
