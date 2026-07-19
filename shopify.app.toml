@@ -10,11 +10,17 @@ embedded = true
 [webhooks]
 api_version = "2026-01"
 
-# H-17: all 5 topics declared so they survive reinstall without relying solely
+# H-17: all topics declared so they survive reinstall without relying solely
 # on programmatic registration in the OAuth callback
 [[webhooks.subscriptions]]
   topics = ["orders/create", "orders/paid", "orders/updated", "customers/create", "customers/update"]
   uri = "https://lizgppzyyljqbmzdytia.supabase.co/functions/v1/shopify-order-webhook"
+
+# Fired immediately when a merchant uninstalls the app.
+# Marks store_installations → uninstalled and clients.is_active → false.
+[[webhooks.subscriptions]]
+  topics = ["app/uninstalled"]
+  uri = "https://lizgppzyyljqbmzdytia.supabase.co/functions/v1/shopify-app-uninstalled"
 
 # GDPR mandatory compliance webhooks (required for Shopify App Store submission)
 [webhooks.privacy_compliance]
