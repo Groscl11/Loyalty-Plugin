@@ -1,5 +1,4 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
-import { decryptToken } from '../_shared/token-crypto.ts';
 
 async function verifyShopifyWebhook(rawBody: string, hmacHeader: string): Promise<boolean> {
   const secret = Deno.env.get('SHOPIFY_WEBHOOK_SECRET') || Deno.env.get('SHOPIFY_API_SECRET');
@@ -144,6 +143,138 @@ async function processOrder(supabase: any, order: any, topic: string, shopDomain
   } catch (e) {
     console.error('[shopify-order-webhook] campaign eval error:', (e as Error).message);
   }
+
+  // ── Attribution recording (fire-and-forget) ────────────────────────────────
+  recordAttribution(supabase, clientId, order).catch((e: Error) =>
+    console.error('[shopify-order-webhook] attribution record failed:', e.message)
+  );
+}
+
+// ─── Attribution recording ────────────────────────────────────────────────────
+async function recordAttribution(supabase: any, clientId: string, order: any) {
+  const orderId = order.id?.toString();
+  if (!orderId) return;
+
+  // Parse note_attributes written by goself-attribution.js on the storefront
+  const attrs: Record<string, string> = {};
+  for (const a of (order.note_attributes ?? [])) {
+    if (a.name && a.value) attrs[a.name] = a.value;
+  }
+
+  const ft = {
+    ref:      attrs['_aff_ft_ref']  || null,
+    source:   attrs['_aff_ft_src']  || null,
+    medium:   attrs['_aff_ft_med']  || null,
+    campaign: attrs['_aff_ft_cam']  || null,
+    ts:       attrs['_aff_ft_ts']   || null,
+  };
+  const lt = {
+    ref:      attrs['_aff_lt_ref']  || null,
+    source:   attrs['_aff_lt_src']  || null,
+    medium:   attrs['_aff_lt_med']  || null,
+    campaign: attrs['_aff_lt_cam']  || null,
+    ts:       attrs['_aff_lt_ts']   || null,
+  };
+  const touchCount = parseInt(attrs['_aff_touches'] || '1', 10);
+
+  // Resolve coupon-based conversion (coupon code on the order)
+  const discountCodes: string[] = (order.discount_codes ?? []).map((d: any) => d.code?.toUpperCase()).filter(Boolean);
+  let convertedBy: string | null = null;
+  let convertedPartnerId: string | null = null;
+  let convertedCouponCode: string | null = null;
+  let convertedUtmLinkId: string | null = null;
+
+  if (discountCodes.length > 0) {
+    // Match first recognised coupon code to an affiliate_code_assignment
+    const { data: codeMatch } = await supabase
+      .from('affiliate_code_assignments')
+      .select('id, partner_id, code')
+      .eq('client_id', clientId)
+      .in('code', discountCodes)
+      .maybeSingle();
+    if (codeMatch) {
+      convertedBy = 'coupon';
+      convertedPartnerId = codeMatch.partner_id;
+      convertedCouponCode = codeMatch.code;
+    }
+  }
+
+  // If no coupon match, try UTM last-touch ref
+  if (!convertedBy && lt.ref) {
+    const { data: utmMatch } = await supabase
+      .from('attribution_utm_links')
+      .select('id, partner_id')
+      .eq('client_id', clientId)
+      .eq('attribution_param_value', lt.ref)
+      .maybeSingle();
+    if (utmMatch) {
+      convertedBy = 'utm';
+      convertedPartnerId = utmMatch.partner_id;
+      convertedUtmLinkId = utmMatch.id;
+    }
+  }
+
+  // Resolve UTM link IDs for first/last touch
+  let ftLinkId: string | null = null;
+  let ltLinkId: string | null = null;
+
+  if (ft.ref) {
+    const { data: ftLink } = await supabase
+      .from('attribution_utm_links')
+      .select('id')
+      .eq('client_id', clientId)
+      .eq('attribution_param_value', ft.ref)
+      .maybeSingle();
+    if (ftLink) ftLinkId = ftLink.id;
+  }
+  if (lt.ref && lt.ref !== ft.ref) {
+    const { data: ltLink } = await supabase
+      .from('attribution_utm_links')
+      .select('id')
+      .eq('client_id', clientId)
+      .eq('attribution_param_value', lt.ref)
+      .maybeSingle();
+    if (ltLink) ltLinkId = ltLink.id;
+  } else if (lt.ref === ft.ref) {
+    ltLinkId = ftLinkId;
+  }
+
+  if (!convertedBy && !ft.ref && !lt.ref) {
+    // No affiliate signal on this order — nothing to record
+    return;
+  }
+
+  const record = {
+    client_id:              clientId,
+    shopify_order_id:       orderId,
+    order_revenue:          parseFloat(order.total_price || '0'),
+    order_currency:         order.currency || 'INR',
+    converted_by:           convertedBy || 'direct',
+    converted_partner_id:   convertedPartnerId,
+    converted_coupon_code:  convertedCouponCode,
+    converted_utm_link_id:  convertedUtmLinkId,
+    ft_ref:      ft.ref,
+    ft_source:   ft.source,
+    ft_medium:   ft.medium,
+    ft_campaign: ft.campaign,
+    ft_utm_link_id: ftLinkId,
+    ft_at:       ft.ts ? new Date(ft.ts).toISOString() : null,
+    lt_ref:      lt.ref,
+    lt_source:   lt.source,
+    lt_medium:   lt.medium,
+    lt_campaign: lt.campaign,
+    lt_utm_link_id: ltLinkId,
+    lt_at:       lt.ts ? new Date(lt.ts).toISOString() : null,
+    touch_count:            touchCount,
+    attribution_window_days: 30,
+  };
+
+  const { error } = await supabase
+    .from('order_attribution')
+    .upsert(record, { onConflict: 'client_id,shopify_order_id' });
+
+  if (error) console.error('[shopify-order-webhook] order_attribution upsert:', error.message);
+  else console.log(`[shopify-order-webhook] attribution recorded: order=${orderId} converted_by=${convertedBy} partner=${convertedPartnerId}`);
 }
 
 // ─── Points award (parallelised, idempotent) ─────────────────────────────────
@@ -406,7 +537,20 @@ async function checkAdvancedCampaignRules(
           .eq('campaign_rule_id', rule.id).eq('order_id', orderRecord.order_id)
           .in('trigger_result', ['success', 'already_enrolled', 'max_reached', 'below_threshold', 'not_matched'])
           .maybeSingle();
-        if (existing) continue;
+        if (existing) {
+          // A later webhook event (e.g. orders/paid) may carry the correct order
+          // name and total that an earlier event (orders/created) lacked. Refresh
+          // display fields without re-running campaign logic.
+          const orderValueNum = parseFloat(orderRecord.total_price);
+          const patch: Record<string, unknown> = {};
+          if (!isNaN(orderValueNum) && orderValueNum > 0) patch.order_value = orderValueNum;
+          if (orderRecord.order_number) patch.order_number = orderRecord.order_number;
+          if (shopifyOrderName) patch.shopify_order_name = shopifyOrderName;
+          if (Object.keys(patch).length) {
+            await supabase.from('campaign_trigger_logs').update(patch).eq('id', existing.id);
+          }
+          continue;
+        }
 
         let memberId: string | null = null;
         if (orderRecord.customer_phone) {
