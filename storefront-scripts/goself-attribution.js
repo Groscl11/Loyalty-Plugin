@@ -9,6 +9,8 @@
  *   2. Stores first-touch (never overwritten) and last-touch (always updated) in localStorage
  *   3. Writes both to Shopify cart attributes so they appear on the order as note_attributes
  *   4. Respects the attribution window — data expires after N days (default 30)
+ *   5. Pings the click-tracking endpoint so the link's click count in UTM Links
+ *      increments even when the raw (non-shortened) link was shared directly
  *
  * Order note_attributes written:
  *   _aff_ft_ref    — first-touch attribution param value (e.g. "graboi_diwali26")
@@ -29,6 +31,15 @@
 
   var STORAGE_KEY = '_gsa_v1';
   var WINDOW_DAYS = 30;
+  var CLICK_ENDPOINT = 'https://jblqyvicxhmqqjhostcj.supabase.co/functions/v1/track-utm-click';
+
+  // ── Report a click for the attribution link's counter ───────────────────────
+  function pingClick(ref) {
+    if (!ref) return;
+    try {
+      fetch(CLICK_ENDPOINT + '?ref=' + encodeURIComponent(ref), { method: 'GET', keepalive: true }).catch(function () {});
+    } catch (e) {}
+  }
 
   // ── Read incoming UTM/attribution params ────────────────────────────────────
   function readParams() {
@@ -134,6 +145,7 @@
 
     save(updated);
     writeCartAttributes(updated);
+    if (incoming.ref) pingClick(incoming.ref);
 
   } else if (stored) {
     // No new UTM on this page, but we have stored attribution — re-write cart
