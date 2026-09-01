@@ -168,10 +168,11 @@ Deno.serve(async (req: Request) => {
     if (installErr) throw installErr;
     const installationId = installation.id;
 
-    // ── 6. Parallel: shop.json (real email) + webhook registration ─────────
+    // ── 6. Parallel: shop.json (real email) + webhook + pixel registration ──
     const [shopDetailsResult] = await Promise.allSettled([
       fetchShopDetails(shop, accessToken, 5000),
       registerWebhooks(shop, accessToken, installationId, clientId, supabase),
+      registerWebPixel(shop, accessToken),
     ]);
 
     const shopData      = shopDetailsResult.status === 'fulfilled' ? shopDetailsResult.value : null;
@@ -310,6 +311,43 @@ async function registerWebhooks(
   }).eq('id', installationId);
 }
 
+// Activates the attribution-pixel Web Pixel extension for this shop so click
+// tracking works without any merchant touching theme code. Best-effort —
+// failure here must never block install (wrapped in try/catch, no throw).
+async function registerWebPixel(shop: string, accessToken: string): Promise<void> {
+  const clickEndpoint = Deno.env.get('CLICK_TRACKING_ENDPOINT')
+    || `${Deno.env.get('SUPABASE_URL')}/functions/v1/track-utm-click`;
+
+  const query = `
+    mutation webPixelCreate($webPixel: WebPixelInput!) {
+      webPixelCreate(webPixel: $webPixel) {
+        userErrors { field message }
+        webPixel { id }
+      }
+    }
+  `;
+
+  try {
+    const res = await fetchWithTimeout(`https://${shop}/admin/api/2025-01/graphql.json`, {
+      method: 'POST',
+      headers: { 'X-Shopify-Access-Token': accessToken, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        query,
+        variables: { webPixel: { settings: { clickEndpoint } } },
+      }),
+    }, 5000);
+    const json = await res.json();
+    const errors = json?.data?.webPixelCreate?.userErrors;
+    if (errors?.length) {
+      // Common non-fatal case: pixel already exists for this shop (reinstall) —
+      // Shopify returns a userError rather than an HTTP error for that.
+      console.warn('[registerWebPixel]', shop, JSON.stringify(errors));
+    }
+  } catch (err: any) {
+    console.error('[registerWebPixel] failed for', shop, err?.message);
+  }
+}
+
 async function installDefaultPlugins(installationId: string, clientId: string | null, supabase: any): Promise<void> {
   const plugins = [
     { type: 'loyalty',   name: 'Loyalty Points System', version: '1.0.0' },
@@ -355,5 +393,9 @@ async function verifyShopifyHmac(url: URL, secret: string): Promise<boolean> {
   );
   const sig      = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(msg));
   const computed = Array.from(new Uint8Array(sig)).map(b => b.toString(16).padStart(2, '0')).join('');
-  return computed === hmac;
+  // C-11: constant-time comparison to avoid leaking timing info
+  if (computed.length !== hmac.length) return false;
+  let diff = 0;
+  for (let i = 0; i < computed.length; i++) diff |= computed.charCodeAt(i) ^ hmac.charCodeAt(i);
+  return diff === 0;
 }

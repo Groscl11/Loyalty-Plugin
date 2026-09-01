@@ -1,0 +1,31 @@
+# Attribution Click-Tracking Pixel
+#
+# Multi-tenant-safe alternative to a hand-pasted storefront script. This
+# extension ships as part of the app and is activated per-shop via the
+# webPixelCreate Admin GraphQL mutation (see shopify-oauth-callback), so no
+# merchant ever touches theme code. Only responsibility: increment the click
+# counter on attribution_utm_links when a visitor lands with a tracked link
+# (?bg_ref=, ?ref=, ?bg_aff=, or ?aff=). Order-level first/last-touch
+# attribution (cart note_attributes) stays on the existing embed mechanism.
+
+api_version = "2025-07"
+
+[[extensions]]
+type = "web_pixel_extension"
+name = "Goself Attribution Tracking"
+handle = "attribution-pixel"
+runtime_context = "strict"
+
+[extensions.customer_privacy]
+analytics = true
+marketing = false
+preferences = false
+sale_of_data = "disabled"
+
+[extensions.settings]
+
+[[extensions.settings.fields]]
+key = "clickEndpoint"
+type = "single_line_text_field"
+name = "Click tracking endpoint"
+description = "Base URL of the track-utm-click edge function for this environment (staging vs production project)"
