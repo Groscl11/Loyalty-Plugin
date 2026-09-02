@@ -214,6 +214,7 @@ Deno.serve(async (req: Request) => {
       needsWebhooks
         ? registerWebhooks(shop, accessToken, installationId, clientId, supabase)
         : Promise.resolve(),
+      registerWebPixel(shop, accessToken),
     ]);
 
     const shopData      = shopDetailsResult.status === "fulfilled" ? shopDetailsResult.value : null;
@@ -496,6 +497,42 @@ async function registerWebhooks(
     webhooks_registered_at: new Date().toISOString(),
     webhook_health_status: success === topics.length ? "healthy" : "degraded",
   }).eq("id", installationId);
+}
+
+// Activates the attribution-pixel Web Pixel extension for this shop so click
+// tracking works without any merchant touching theme code. Best-effort and
+// idempotent (Shopify returns a userError, not an HTTP error, if a pixel
+// already exists for this shop) — safe to call on every install AND re-open.
+async function registerWebPixel(shop: string, accessToken: string): Promise<void> {
+  const clickEndpoint = Deno.env.get("CLICK_TRACKING_ENDPOINT")
+    || `${Deno.env.get("SUPABASE_URL")}/functions/v1/track-utm-click`;
+
+  const query = `
+    mutation webPixelCreate($webPixel: WebPixelInput!) {
+      webPixelCreate(webPixel: $webPixel) {
+        userErrors { field message }
+        webPixel { id }
+      }
+    }
+  `;
+
+  try {
+    const res = await fetchWithTimeout(`https://${shop}/admin/api/2025-01/graphql.json`, {
+      method: "POST",
+      headers: { "X-Shopify-Access-Token": accessToken, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        query,
+        variables: { webPixel: { settings: { clickEndpoint } } },
+      }),
+    }, 5000);
+    const result = await res.json();
+    const errors = result?.data?.webPixelCreate?.userErrors;
+    if (errors?.length) {
+      console.warn("[registerWebPixel]", shop, JSON.stringify(errors));
+    }
+  } catch (err: any) {
+    console.error("[registerWebPixel] failed for", shop, err?.message);
+  }
 }
 
 async function installDefaultPlugins(installationId: string, clientId: string | null, supabase: any): Promise<void> {
