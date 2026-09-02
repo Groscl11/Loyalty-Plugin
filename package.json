@@ -7,7 +7,9 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "build:widget": "npx esbuild loyalty-widget-src/index.jsx --bundle --minify --outfile=extensions/loyalty-widget/assets/loyalty-widget-v6.js --define:process.env.NODE_ENV=\\\"production\\\" --define:__SUPABASE_URL__=\\\"https://lizgppzyyljqbmzdytia.supabase.co\\\" --define:__SUPABASE_ANON_KEY__=\\\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxpemdwcHp5eWxqcWJtemR5dGlhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQ0MDE0MDYsImV4cCI6MjA3OTk3NzQwNn0.E5yJHY4mjOvLiqZCfCp9vnNC7xsRAlBSdW55YE2RPC0\\\" --loader:.jsx=jsx --jsx=automatic --platform=browser --target=es2017",
     "build:widget:staging": "npx esbuild loyalty-widget-src/index.jsx --bundle --minify --outfile=extensions/loyalty-widget/assets/loyalty-widget-v6.js --define:process.env.NODE_ENV=\\\"production\\\" --define:__SUPABASE_URL__=\\\"https://jblqyvicxhmqqjhostcj.supabase.co\\\" --define:__SUPABASE_ANON_KEY__=\\\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpibHF5dmljeGhtcXFqaG9zdGNqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcxOTU1MTAsImV4cCI6MjA5Mjc3MTUxMH0.pMOn3TKgzp_QqJgOlMzwO7ZRRex-mifWUzhJPwxUndE\\\" --loader:.jsx=jsx --jsx=automatic --platform=browser --target=es2017",
-    "build:widget:dev": "npx esbuild loyalty-widget-src/index.jsx --bundle --sourcemap --outfile=extensions/loyalty-widget/assets/loyalty-widget-v6.js --define:process.env.NODE_ENV=\\\"development\\\" --define:__SUPABASE_URL__=\\\"https://jblqyvicxhmqqjhostcj.supabase.co\\\" --define:__SUPABASE_ANON_KEY__=\\\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpibHF5dmljeGhtcXFqaG9zdGNqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcxOTU1MTAsImV4cCI6MjA5Mjc3MTUxMH0.pMOn3TKgzp_QqJgOlMzwO7ZRRex-mifWUzhJPwxUndE\\\" --loader:.jsx=jsx --jsx=automatic --platform=browser --target=es2017"
+    "build:widget:dev": "npx esbuild loyalty-widget-src/index.jsx --bundle --sourcemap --outfile=extensions/loyalty-widget/assets/loyalty-widget-v6.js --define:process.env.NODE_ENV=\\\"development\\\" --define:__SUPABASE_URL__=\\\"https://jblqyvicxhmqqjhostcj.supabase.co\\\" --define:__SUPABASE_ANON_KEY__=\\\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpibHF5dmljeGhtcXFqaG9zdGNqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcxOTU1MTAsImV4cCI6MjA5Mjc3MTUxMH0.pMOn3TKgzp_QqJgOlMzwO7ZRRex-mifWUzhJPwxUndE\\\" --loader:.jsx=jsx --jsx=automatic --platform=browser --target=es2017",
+    "deploy:staging": "cp .env.staging .env && npm run build:widget:staging && shopify app deploy --config dev --allow-updates",
+    "deploy:prod": "cp .env .env.prod.bak 2>/dev/null; npm run build:widget && shopify app deploy --allow-updates"
   },
   "keywords": [],
   "author": "",
@@ -15,6 +17,7 @@
   "dependencies": {
     "@shopify/ui-extensions": "^2025.7.4",
     "@shopify/ui-extensions-react": "^2025.7.4",
+    "@shopify/web-pixels-extension": "2.18.0",
     "@supabase/supabase-js": "^2.99.1",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",

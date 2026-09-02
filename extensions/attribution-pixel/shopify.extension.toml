@@ -23,9 +23,9 @@ preferences = false
 sale_of_data = "disabled"
 
 [extensions.settings]
+type = "object"
 
-[[extensions.settings.fields]]
-key = "clickEndpoint"
+[extensions.settings.fields.clickEndpoint]
 type = "single_line_text_field"
 name = "Click tracking endpoint"
 description = "Base URL of the track-utm-click edge function for this environment (staging vs production project)"
