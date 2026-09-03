@@ -2,11 +2,14 @@
 #
 # Multi-tenant-safe alternative to a hand-pasted storefront script. This
 # extension ships as part of the app and is activated per-shop via the
-# webPixelCreate Admin GraphQL mutation (see shopify-oauth-callback), so no
-# merchant ever touches theme code. Only responsibility: increment the click
-# counter on attribution_utm_links when a visitor lands with a tracked link
-# (?bg_ref=, ?ref=, ?bg_aff=, or ?aff=). Order-level first/last-touch
-# attribution (cart note_attributes) stays on the existing embed mechanism.
+# webPixelCreate Admin GraphQL mutation (see shopify-token-exchange), so no
+# merchant ever touches theme code.
+#
+# Two jobs: (1) increment the click counter on attribution_utm_links when a
+# visitor lands with a tracked link (?bg_ref=, ?ref=, ?bg_aff=, or ?aff=);
+# (2) at checkout_completed, report the last-seen ref + the checkout token to
+# track-checkout-attribution so shopify-order-webhook can join it back to the
+# order — order-level attribution without any theme script.
 
 api_version = "2025-07"
 uid = "fa4e9c68-6a50-47e8-cc64-43b6f601fe6a3454fbb7"
@@ -30,3 +33,8 @@ type = "object"
 type = "single_line_text_field"
 name = "Click tracking endpoint"
 description = "Base URL of the track-utm-click edge function for this environment (staging vs production project)"
+
+[extensions.settings.fields.attributionEndpoint]
+type = "single_line_text_field"
+name = "Checkout attribution endpoint"
+description = "Base URL of the track-checkout-attribution edge function for this environment (staging vs production project)"

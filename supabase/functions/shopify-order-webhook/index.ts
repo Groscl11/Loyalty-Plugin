@@ -177,6 +177,35 @@ async function recordAttribution(supabase: any, clientId: string, order: any) {
   };
   const touchCount = parseInt(attrs['_aff_touches'] || '1', 10);
 
+  // Fallback for stores with no goself-attribution.js on their theme (the
+  // common case — it requires a manual theme edit): the Web Pixel reports
+  // {ref, checkout_token} at checkout_completed via track-checkout-attribution,
+  // staged in pending_checkout_attributions. Join it back to this order by
+  // checkout token — order.token is the same value Checkout.token carries in
+  // the Web Pixel event.
+  if (!lt.ref) {
+    const checkoutToken: string | null = order.token || order.checkout_token || null;
+    if (checkoutToken) {
+      const { data: pending } = await supabase
+        .from('pending_checkout_attributions')
+        .select('ref, source, medium, campaign, utm_link_id')
+        .eq('client_id', clientId)
+        .eq('checkout_token', checkoutToken)
+        .is('consumed_at', null)
+        .maybeSingle();
+      if (pending) {
+        lt.ref = pending.ref;
+        lt.source = pending.source;
+        lt.medium = pending.medium;
+        lt.campaign = pending.campaign;
+        supabase.from('pending_checkout_attributions')
+          .update({ consumed_at: new Date().toISOString() })
+          .eq('client_id', clientId).eq('checkout_token', checkoutToken)
+          .then(({ error }: any) => { if (error) console.error('[recordAttribution] consume pending failed:', error.message); });
+      }
+    }
+  }
+
   // Resolve coupon-based conversion (coupon code on the order)
   const discountCodes: string[] = (order.discount_codes ?? []).map((d: any) => d.code?.toUpperCase()).filter(Boolean);
   let convertedBy: string | null = null;
