@@ -1,0 +1,47 @@
+/* Shared design tokens — GoSelf Loyalty brand */
+:root{
+  --indigo:#6366f1; --indigo-600:#4f46e5; --indigo-700:#4338ca;
+  --amber:#f59e0b; --amber-100:#fef3c7; --amber-200:#fde68a; --amber-800:#78350f;
+  --ink:#111827; --gray-700:#374151; --gray-500:#6b7280; --gray-400:#9ca3af;
+  --gray-200:#e5e7eb; --gray-100:#f3f4f6; --bg:#f7f8fa; --white:#fff;
+  --green:#16a34a;
+  --font:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+html,body{font-family:var(--font);color:var(--ink)}
+
+/* --- Reusable loyalty widget panel (matches real 312px floating panel) --- */
+.lw-panel{width:340px;background:var(--white);border-radius:20px;overflow:hidden;
+  box-shadow:0 30px 70px -20px rgba(17,24,39,.35),0 8px 20px -6px rgba(17,24,39,.15);
+  border:1px solid rgba(17,24,39,.06);display:flex;flex-direction:column}
+.lw-head{background:linear-gradient(135deg,var(--indigo) 0%,var(--indigo-700) 100%);
+  color:#fff;padding:22px 22px 26px}
+.lw-head .row{display:flex;justify-content:space-between;align-items:center}
+.lw-head .brand{font-weight:700;font-size:15px;letter-spacing:.2px;display:flex;align-items:center;gap:8px}
+.lw-head .close{opacity:.7;font-size:18px}
+.lw-tier{display:inline-flex;align-items:center;gap:6px;background:rgba(255,255,255,.16);
+  padding:5px 11px;border-radius:999px;font-size:12px;font-weight:600;margin-top:16px}
+.lw-balance{margin-top:14px;display:flex;align-items:baseline;gap:8px}
+.lw-balance .num{font-size:42px;font-weight:800;line-height:1}
+.lw-balance .unit{font-size:15px;font-weight:600;opacity:.85}
+.lw-progress{margin-top:16px}
+.lw-progress .track{height:7px;background:rgba(255,255,255,.22);border-radius:999px;overflow:hidden}
+.lw-progress .fill{height:100%;background:var(--amber);border-radius:999px}
+.lw-progress .lbl{font-size:11.5px;opacity:.85;margin-top:7px}
+.lw-body{padding:18px;background:var(--white)}
+.lw-section-title{font-size:12px;font-weight:700;color:var(--gray-500);text-transform:uppercase;letter-spacing:.6px;margin-bottom:12px}
+.lw-reward{display:flex;align-items:center;gap:12px;padding:12px;border:1px solid var(--gray-200);
+  border-radius:14px;margin-bottom:10px}
+.lw-reward .ic{width:38px;height:38px;border-radius:10px;background:var(--amber-100);
+  display:flex;align-items:center;justify-content:center;font-size:19px;flex-shrink:0}
+.lw-reward .txt{flex:1}
+.lw-reward .t{font-size:13.5px;font-weight:600}
+.lw-reward .s{font-size:12px;color:var(--gray-500);margin-top:2px}
+.lw-reward .cta{font-size:12.5px;font-weight:700;color:var(--white);background:var(--indigo);
+  padding:8px 14px;border-radius:10px}
+.lw-reward .cost{font-size:12.5px;font-weight:700;color:var(--amber-800);background:var(--amber-100);padding:8px 12px;border-radius:10px}
+.lw-nav{display:flex;justify-content:space-around;border-top:1px solid var(--gray-100);padding:11px 0 9px}
+.lw-nav .item{display:flex;flex-direction:column;align-items:center;gap:3px;font-size:10.5px;color:var(--gray-400);font-weight:600}
+.lw-nav .item.on{color:var(--indigo)}
+.lw-nav .item .ic{font-size:17px}
+.lw-powered{text-align:center;font-size:10px;color:var(--gray-400);padding:8px;background:var(--gray-100);font-weight:600}

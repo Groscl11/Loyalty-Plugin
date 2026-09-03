@@ -1,33 +1,28 @@
 /**
- * BottomNav — GoSelf Loyalty Widget V6
- * 5-tab navigation bar. "⋯ More" cycles through Milestones → History → Profile.
+ * BottomNav — 5-tab fixed bar (Home / Earn / Redeem / Refer / Profile).
+ *
+ * Wallet, Milestones, History no longer live in the primary nav — they're
+ * surfaced inside the Profile hub.  Active-coupon count is shown as a badge
+ * on the Profile tab instead of Wallet.
+ *
+ * The Refer tab can be hidden via merchant config (config.showReferTab),
+ * collapsing to a 4-tab layout.
  */
 
-import React, { useState, useCallback } from 'react';
+import React from 'react';
+import { tokens } from '../utils/tokens.js';
 
-const MORE_TABS = ['milestones', 'history', 'profile'];
+const PRIMARY_TABS = [
+  { id: 'home',    icon: '🏠', label: 'Home'    },
+  { id: 'earn',    icon: '🪙', label: 'Earn'    },
+  { id: 'redeem',  icon: '🎁', label: 'Redeem'  },
+  { id: 'refer',   icon: '📣', label: 'Refer'   },
+  { id: 'profile', icon: '👤', label: 'Profile' },
+];
 
-const NAV_ICONS = {
-  home:       '🏠',
-  earn:       '🪙',
-  redeem:     '🎁',
-  refer:      '📣',
-  wallet:     '💳',
-  milestones: '🏆',
-  history:    '📜',
-  profile:    '👤',
-};
-
-const NAV_LABELS = {
-  home:       'Home',
-  earn:       'Earn',
-  redeem:     'Redeem',
-  refer:      'Refer',
-  wallet:     'Wallet',
-  milestones: 'Milestones',
-  history:    'History',
-  profile:    'Profile',
-};
+// Sub-pages of Profile — when one of these is the active route we still
+// highlight the Profile tab in the nav.
+const PROFILE_SUBPAGES = new Set(['wallet', 'milestones', 'history', 'profile']);
 
 const BottomNav = React.memo(function BottomNav({
   activeTab,
@@ -35,75 +30,36 @@ const BottomNav = React.memo(function BottomNav({
   config,
   activeCouponCount,
 }) {
-  const [moreTabIdx, setMoreTabIdx] = useState(0);
-
-  // Which tabs are visible in the primary bar
-  const primaryTabs = ['home', 'earn', 'redeem', 'wallet'];
-  if (config.showMilestones) primaryTabs.push('milestones');
-  if (config.showReferTab)   primaryTabs.push('refer');
-
-  // Compact mode: icon-only when many tabs are visible
-  const compactMode = primaryTabs.length >= 5;
-
-  // Filter MORE tabs — only history & profile go here now
-  const availableMoreTabs = ['history', 'profile'];
-
-  const moreTab = availableMoreTabs[moreTabIdx % availableMoreTabs.length] || 'history';
-  const isMobileMoreActive = availableMoreTabs.includes(activeTab);
-
-  const handleMoreClick = useCallback(() => {
-    const next = availableMoreTabs[moreTabIdx % availableMoreTabs.length];
-    if (activeTab === next) {
-      // Cycle to next
-      const newIdx = (moreTabIdx + 1) % availableMoreTabs.length;
-      setMoreTabIdx(newIdx);
-      setTab(availableMoreTabs[newIdx]);
-    } else {
-      setTab(next);
-    }
-  }, [activeTab, moreTabIdx, availableMoreTabs, setTab]);
-
-  const allTabs = [...primaryTabs, '__more__'];
+  const tabs = PRIMARY_TABS.filter(t => {
+    if (t.id === 'earn'  && !config.showEarnTab)  return false;
+    if (t.id === 'refer' && !config.showReferTab) return false;
+    return true;
+  });
 
   return (
     <div
       style={{
         flexShrink: 0,
         display: 'flex',
-        borderTop: '1px solid #f3f4f6',
-        backgroundColor: '#ffffff',
+        borderTop: `1px solid ${tokens.borderSoft}`,
+        backgroundColor: tokens.surface,
       }}
       role="tablist"
       aria-label="Navigation"
     >
-      {allTabs.map(tab => {
-        if (tab === '__more__') {
-          const isActive = isMobileMoreActive;
-          return (
-            <NavTab
-              key="more"
-              label={isMobileMoreActive ? NAV_LABELS[activeTab] : '⋯ More'}
-              icon={isMobileMoreActive ? NAV_ICONS[activeTab] : '⋯'}
-              isActive={isActive}
-              accentColor={config.accentColor}
-              badge={activeTab === 'wallet' ? activeCouponCount : 0}
-              compact={compactMode}
-              onClick={handleMoreClick}
-            />
-          );
-        }
-
-        const isActive = activeTab === tab;
+      {tabs.map(t => {
+        const isActive = t.id === activeTab
+          || (t.id === 'profile' && PROFILE_SUBPAGES.has(activeTab));
+        const showBadge = t.id === 'profile' && activeCouponCount > 0;
         return (
           <NavTab
-            key={tab}
-            label={NAV_LABELS[tab]}
-            icon={NAV_ICONS[tab]}
+            key={t.id}
+            label={t.label}
+            icon={t.icon}
             isActive={isActive}
             accentColor={config.accentColor}
-            badge={tab === 'wallet' ? activeCouponCount : 0}
-            compact={compactMode}
-            onClick={() => setTab(tab)}
+            badge={showBadge ? activeCouponCount : 0}
+            onClick={() => setTab(t.id)}
           />
         );
       })}
@@ -111,7 +67,7 @@ const BottomNav = React.memo(function BottomNav({
   );
 });
 
-function NavTab({ label, icon, isActive, accentColor, badge, compact, onClick }) {
+function NavTab({ label, icon, isActive, accentColor, badge, onClick }) {
   return (
     <button
       role="tab"
@@ -123,32 +79,34 @@ function NavTab({ label, icon, isActive, accentColor, badge, compact, onClick })
         flexDirection: 'column',
         alignItems: 'center',
         justifyContent: 'center',
-        padding: compact ? '6px 1px 6px' : '6px 2px 7px',
+        padding: '8px 2px 8px',
         border: 'none',
         background: 'transparent',
         cursor: 'pointer',
         borderTop: isActive ? `2px solid ${accentColor}` : '2px solid transparent',
-        color: isActive ? accentColor : '#6b7280',
+        color: isActive ? accentColor : tokens.textMuted,
         fontSize: 10,
-        fontWeight: isActive ? 600 : 400,
+        fontWeight: isActive ? 600 : 500,
         position: 'relative',
-        gap: 2,
+        gap: 3,
+        transition: 'color 0.15s',
       }}
     >
-      <span style={{ fontSize: compact ? 15 : 18, lineHeight: 1 }}>{icon}</span>
-      {!compact && <span style={{ fontSize: 10 }}>{label}</span>}
+      <span style={{ fontSize: 18, lineHeight: 1 }}>{icon}</span>
+      <span style={{ fontSize: 10 }}>{label}</span>
       {badge > 0 && (
         <span
           style={{
             position: 'absolute',
             top: 4,
             right: '50%',
-            transform: 'translateX(8px)',
-            background: '#ef4444',
+            transform: 'translateX(12px)',
+            background: tokens.danger,
             color: '#fff',
             borderRadius: '50%',
-            width: 16,
+            minWidth: 16,
             height: 16,
+            padding: '0 4px',
             fontSize: 9,
             fontWeight: 700,
             display: 'flex',

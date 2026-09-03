@@ -10,6 +10,11 @@ handle = "referral-widget"
 module = "./src/index.jsx"
 target = "purchase.thank-you.block.render"
 
+[[extensions.targeting]]
+module = "./src/OrderStatus.jsx"
+export = "forOrderStatus"
+target = "customer-account.order-status.block.render"
+
 [extensions.capabilities]
 network_access = true
 api_access = true
@@ -19,4 +24,56 @@ api_access = true
 key = "referral_reward_text"
 type = "single_line_text_field"
 name = "Referral Reward Text"
-description = "e.g. '15% Off Coupon' shown in guest login prompt and logged-in banner"
+description = "Reward shown to the customer. e.g. '15% Off Coupon'"
+
+[[extensions.settings.fields]]
+key = "template"
+type = "single_line_text_field"
+name = "Layout Template"
+description = "banner = full card with all share options (default) · minimal = no card, just link + WhatsApp · compact = card with inline WhatsApp button only"
+
+[[extensions.settings.fields.validations]]
+name = "choices"
+value = '["banner", "minimal", "compact"]'
+
+[[extensions.settings.fields]]
+key = "banner_tone"
+type = "single_line_text_field"
+name = "Banner Colour"
+description = "Colour of the banner card (used when template is banner or compact). Ignored for minimal."
+
+[[extensions.settings.fields.validations]]
+name = "choices"
+value = '["success", "info", "warning"]'
+
+[[extensions.settings.fields]]
+key = "show_referral_url"
+type = "boolean"
+name = "Show Referral URL"
+description = "Display the full referral link text. Uncheck to show only share buttons"
+
+[[extensions.settings.fields]]
+key = "show_social_buttons"
+type = "boolean"
+name = "Show Social Share Buttons"
+description = "Show X (Twitter), Gmail and Facebook share buttons below WhatsApp"
+
+[[extensions.settings.fields]]
+key = "button_style"
+type = "single_line_text_field"
+name = "Button Style"
+description = "primary = filled (theme colour, default) · secondary = outlined · plain = text link"
+
+[[extensions.settings.fields.validations]]
+name = "choices"
+value = '["primary", "secondary", "plain"]'
+
+[[extensions.settings.fields]]
+key = "text_alignment"
+type = "single_line_text_field"
+name = "Text Alignment"
+description = "Alignment of all content within the block"
+
+[[extensions.settings.fields.validations]]
+name = "choices"
+value = '["start", "center", "end"]'

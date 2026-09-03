@@ -1,610 +1,347 @@
-{% comment %}
-  Collection Page Points Banner
-  Shows a site-wide "Earn points on every purchase" nudge on collection pages.
-  Earn rate always comes from the GoSelf program config — guests see the program
-  default rate, logged-in members see their personalised tier rate.
-  Also injects per-product badges into the collection grid for all visitors.
-  Add this block to any collection template in the Theme Editor → Apps → Add block.
-{% endcomment %}
-
 <div class="rh-col-points rh-colp-tmpl--{{ block.settings.template }}"
-     id="rh-col-points-{{ block.id }}"
-     {{ block.shopify_attributes }}>
-  <div class="rh-colp-inner">
-
-    <span class="rh-colp-icon">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-        <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
-      </svg>
-    </span>
-
-    <div class="rh-colp-content">
-      <span class="rh-colp-label" id="rh-colp-label-{{ block.id }}">{{ block.settings.label_text }}</span>
-      <strong class="rh-colp-rate" id="rh-colp-rate-{{ block.id }}">Points</strong>
-    </div>
-
-    {% if block.settings.show_tier_badge %}
-    <span class="rh-colp-tier" id="rh-colp-tier-{{ block.id }}" style="display:none"></span>
-    {% endif %}
-
-    {% if block.settings.show_balance %}
-    <div class="rh-colp-balance" id="rh-colp-bal-wrap-{{ block.id }}" style="display:none">
-      <span class="rh-colp-bal-label">Balance: </span>
-      <strong id="rh-colp-bal-{{ block.id }}">0</strong>
-      <span id="rh-colp-bal-name-{{ block.id }}">Points</span>
-    </div>
-    {% endif %}
-
-    {% if block.settings.show_signin_nudge and customer == nil %}
-    <a href="/account/login"
-       class="rh-colp-signin rh-colp-signin--{{ block.settings.signin_style }}">
-      Sign in to earn
-    </a>
-    {% endif %}
-
-    {% if block.settings.show_info_tooltip %}
-    <div class="rh-colp-info-wrap" id="rh-colp-info-{{ block.id }}">
-      <button class="rh-colp-info-btn" aria-label="Points info" type="button">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-          <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
-        </svg>
-      </button>
-      <div class="rh-colp-tooltip" role="tooltip">
-        <ul class="rh-colp-tooltip-list">
-          {% unless block.settings.tooltip_line_1 == blank %}
-          <li>{{ block.settings.tooltip_line_1 }}</li>
-          {% endunless %}
-          {% unless block.settings.tooltip_line_2 == blank %}
-          <li>{{ block.settings.tooltip_line_2 }}</li>
-          {% endunless %}
-          {% unless block.settings.tooltip_line_3 == blank %}
-          <li>{{ block.settings.tooltip_line_3 }}</li>
-          {% endunless %}
-        </ul>
-        {% if block.settings.tooltip_link_url != blank and block.settings.tooltip_link_text != blank %}
-        <a href="{{ block.settings.tooltip_link_url }}" class="rh-colp-tooltip-link" target="_blank" rel="noopener">{{ block.settings.tooltip_link_text }}</a>
-        {% endif %}
-      </div>
-    </div>
-    {% endif %}
-
-  </div>
+id="rh-col-points-{{ block.id }}"
+{{ block.shopify_attributes }}>
+<div class="rh-colp-inner">
+<span class="rh-colp-icon">
+<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+</svg>
+</span>
+<div class="rh-colp-content">
+<span class="rh-colp-label" id="rh-colp-label-{{ block.id }}">{{ block.settings.label_text }}</span>
+<strong class="rh-colp-rate" id="rh-colp-rate-{{ block.id }}">Points</strong>
 </div>
-
-<style>
-  /* ── Base ──────────────────────────────────────────────────────────────── */
-  #rh-col-points-{{ block.id }} {
-    font-family: inherit;
-    {% if block.settings.text_size == 'small' %}
-    font-size: 12px;
-    {% elsif block.settings.text_size == 'large' %}
-    font-size: 16px;
-    {% else %}
-    font-size: 14px;
-    {% endif %}
-    color: {{ block.settings.text_color }};
-    margin: {{ block.settings.margin_top }}px 0 {{ block.settings.margin_bottom }}px 0;
-  }
-  #rh-col-points-{{ block.id }} .rh-colp-inner {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    flex-wrap: wrap;
-    {% if block.settings.text_align == 'center' %}
-    justify-content: center;
-    {% elsif block.settings.text_align == 'end' %}
-    justify-content: flex-end;
-    {% else %}
-    justify-content: flex-start;
-    {% endif %}
-  }
-  #rh-col-points-{{ block.id }} .rh-colp-icon {
-    flex-shrink: 0;
-    color: {{ block.settings.accent_color }};
-    display: flex;
-    align-items: center;
-  }
-  #rh-col-points-{{ block.id }} .rh-colp-content {
-    {% if block.settings.text_align == 'start' %}flex: 1;{% endif %}
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    flex-wrap: wrap;
-  }
-  #rh-col-points-{{ block.id }} .rh-colp-rate {
-    color: {{ block.settings.accent_color }};
-    font-weight: 700;
-    {% if block.settings.text_size == 'small' %}
-    font-size: 13px;
-    {% elsif block.settings.text_size == 'large' %}
-    font-size: 18px;
-    {% else %}
-    font-size: 15px;
-    {% endif %}
-  }
-  #rh-col-points-{{ block.id }} .rh-colp-tier {
-    background: {{ block.settings.accent_color }};
-    color: #fff;
-    font-size: 11px;
-    font-weight: 700;
-    padding: 2px 10px;
-    border-radius: 20px;
-    white-space: nowrap;
-    flex-shrink: 0;
-  }
-  #rh-col-points-{{ block.id }} .rh-colp-balance {
-    font-size: 12px;
-    color: {{ block.settings.text_color }}99;
-    {% if block.settings.text_align == 'start' %}margin-left: auto;{% endif %}
-    white-space: nowrap;
-  }
-
-  /* ── Sign-in: link (default) ───────────────────────────────────────────── */
-  #rh-col-points-{{ block.id }} .rh-colp-signin {
-    {% if block.settings.text_align == 'start' %}margin-left: auto;{% endif %}
-    white-space: nowrap;
-    flex-shrink: 0;
-    text-decoration: none;
-    font-size: 12px;
-    font-weight: 600;
-    line-height: 1;
-  }
-  #rh-col-points-{{ block.id }} .rh-colp-signin--link {
-    color: {{ block.settings.accent_color }};
-    text-decoration: underline;
-  }
-  #rh-col-points-{{ block.id }} .rh-colp-signin--button {
-    color: {{ block.settings.accent_color }};
-    border: 1.5px solid {{ block.settings.accent_color }};
-    border-radius: 6px;
-    padding: 5px 13px;
-    background: transparent;
-    transition: background 0.15s;
-  }
-  #rh-col-points-{{ block.id }} .rh-colp-signin--button:hover {
-    background: {{ block.settings.accent_color }}15;
-  }
-  #rh-col-points-{{ block.id }} .rh-colp-signin--badge {
-    color: #fff;
-    background: {{ block.settings.accent_color }};
-    border-radius: 20px;
-    padding: 5px 14px;
-  }
-
-  /* Per-product badge injected by JS into collection grid cards */
-  .rh-prod-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    background: {{ block.settings.accent_color }}18;
-    border: 1px solid {{ block.settings.accent_color }}44;
-    color: {{ block.settings.accent_color }};
-    font-size: 11px;
-    font-weight: 600;
-    padding: 2px 8px;
-    border-radius: 4px;
-    margin-top: 4px;
-    white-space: nowrap;
-  }
-
-  /* ── Template: card ────────────────────────────────────────────────────── */
-  #rh-col-points-{{ block.id }}.rh-colp-tmpl--card .rh-colp-inner {
-    background: {{ block.settings.bg_color }};
-    border: 1.5px solid {{ block.settings.accent_color }}33;
-    border-radius: {{ block.settings.border_radius }}px;
-    padding: 12px 16px;
-  }
-
-  /* ── Template: minimal ─────────────────────────────────────────────────── */
-  #rh-col-points-{{ block.id }}.rh-colp-tmpl--minimal .rh-colp-inner {
-    background: transparent;
-    border: none;
-    border-radius: 0;
-    padding: 8px 0;
-  }
-
-  /* ── Template: strip ───────────────────────────────────────────────────── */
-  #rh-col-points-{{ block.id }}.rh-colp-tmpl--strip .rh-colp-inner {
-    background: {{ block.settings.accent_color }};
-    border: none;
-    border-radius: 0;
-    padding: 10px 20px;
-  }
-  /* Strip: base elements use accent_color — override them so they show against the accent bg */
-  #rh-col-points-{{ block.id }}.rh-colp-tmpl--strip .rh-colp-icon,
-  #rh-col-points-{{ block.id }}.rh-colp-tmpl--strip .rh-colp-rate,
-  #rh-col-points-{{ block.id }}.rh-colp-tmpl--strip .rh-colp-info-btn {
-    color: {{ block.settings.text_color }};
-  }
-  #rh-col-points-{{ block.id }}.rh-colp-tmpl--strip .rh-colp-tier {
-    background: {{ block.settings.text_color }}30;
-    color: {{ block.settings.text_color }};
-  }
-  #rh-col-points-{{ block.id }}.rh-colp-tmpl--strip .rh-colp-signin--link {
-    color: {{ block.settings.text_color }};
-    opacity: 0.9;
-    text-decoration: underline;
-  }
-  #rh-col-points-{{ block.id }}.rh-colp-tmpl--strip .rh-colp-signin--button {
-    color: {{ block.settings.text_color }};
-    border-color: {{ block.settings.text_color }}80;
-    background: transparent;
-  }
-  #rh-col-points-{{ block.id }}.rh-colp-tmpl--strip .rh-colp-signin--button:hover {
-    background: {{ block.settings.text_color }}15;
-  }
-  #rh-col-points-{{ block.id }}.rh-colp-tmpl--strip .rh-colp-signin--badge {
-    color: {{ block.settings.accent_color }};
-    background: {{ block.settings.text_color }};
-  }
-
-  /* ── Template: pill ────────────────────────────────────────────────────── */
-  #rh-col-points-{{ block.id }}.rh-colp-tmpl--pill {
-    {% if block.settings.text_align == 'center' %}text-align: center;
-    {% elsif block.settings.text_align == 'end' %}text-align: right;
-    {% else %}text-align: left;{% endif %}
-  }
-  #rh-col-points-{{ block.id }}.rh-colp-tmpl--pill .rh-colp-inner {
-    display: inline-flex;
-    background: {{ block.settings.bg_color }};
-    border: 1.5px solid {{ block.settings.accent_color }}33;
-    border-radius: 9999px;
-    padding: 6px 18px;
-  }
-
-  /* ── Info tooltip ─────────────────────────────────────────────────────── */
-  #rh-col-points-{{ block.id }} .rh-colp-info-wrap {
-    position: relative;
-    flex-shrink: 0;
-    {% if block.settings.text_align == 'start' %}margin-left: auto;{% endif %}
-    display: flex;
-    align-items: center;
-  }
-  #rh-col-points-{{ block.id }} .rh-colp-info-btn {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: none;
-    border: none;
-    cursor: pointer;
-    padding: 2px;
-    color: {{ block.settings.accent_color }};
-    opacity: 0.75;
-    line-height: 1;
-  }
-  #rh-col-points-{{ block.id }} .rh-colp-info-btn:hover { opacity: 1; }
-  #rh-col-points-{{ block.id }} .rh-colp-tooltip {
-    display: none;
-    position: absolute;
-    right: 0;
-    top: calc(100% + 8px);
-    min-width: 240px;
-    max-width: 300px;
-    background: #fff;
-    border: 1px solid {{ block.settings.accent_color }}33;
-    border-radius: 8px;
-    box-shadow: 0 4px 16px rgba(0,0,0,0.12);
-    padding: 12px 14px;
-    z-index: 9999;
-    font-size: 13px;
-    color: #333;
-    text-align: left;
-  }
-  #rh-col-points-{{ block.id }} .rh-colp-tooltip::before {
-    content: '';
-    position: absolute;
-    top: -6px;
-    right: 6px;
-    width: 10px;
-    height: 10px;
-    background: #fff;
-    border-left: 1px solid {{ block.settings.accent_color }}33;
-    border-top: 1px solid {{ block.settings.accent_color }}33;
-    transform: rotate(45deg);
-  }
-  #rh-col-points-{{ block.id }} .rh-colp-info-wrap:hover .rh-colp-tooltip,
-  #rh-col-points-{{ block.id }} .rh-colp-info-wrap.rh-active .rh-colp-tooltip {
-    display: block;
-  }
-  #rh-col-points-{{ block.id }} .rh-colp-tooltip-list {
-    margin: 0 0 6px 0;
-    padding: 0 0 0 16px;
-    list-style: disc;
-  }
-  #rh-col-points-{{ block.id }} .rh-colp-tooltip-list li {
-    margin-bottom: 4px;
-    line-height: 1.4;
-  }
-  #rh-col-points-{{ block.id }} .rh-colp-tooltip-link {
-    display: inline-block;
-    margin-top: 4px;
-    font-size: 12px;
-    color: {{ block.settings.accent_color }};
-    text-decoration: underline;
-  }
-</style>
-
-<script>
+{% if block.settings.show_tier_badge %}
+<span class="rh-colp-tier" id="rh-colp-tier-{{ block.id }}" style="display:none"></span>
+{% endif %}
+{% if block.settings.show_balance %}
+<div class="rh-colp-balance" id="rh-colp-bal-wrap-{{ block.id }}" style="display:none">
+<span class="rh-colp-bal-label">Balance: </span>
+<strong id="rh-colp-bal-{{ block.id }}">0</strong>
+<span id="rh-colp-bal-name-{{ block.id }}">Points</span>
+</div>
+{% endif %}
+{% if block.settings.show_signin_nudge and customer == nil %}
+<a href="/account/login"
+class="rh-colp-signin rh-colp-signin--{{ block.settings.signin_style }}">
+Sign in to earn
+</a>
+{% endif %}
+{% if block.settings.show_info_tooltip %}
+<div class="rh-colp-info-wrap" id="rh-colp-info-{{ block.id }}">
+<button class="rh-colp-info-btn" aria-label="Points info" type="button">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+<circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+</svg>
+</button>
+<div class="rh-colp-tooltip" role="tooltip">
+<ul class="rh-colp-tooltip-list">
+{% unless block.settings.tooltip_line_1 == blank %}
+<li>{{ block.settings.tooltip_line_1 }}</li>
+{% endunless %}
+{% unless block.settings.tooltip_line_2 == blank %}
+<li>{{ block.settings.tooltip_line_2 }}</li>
+{% endunless %}
+{% unless block.settings.tooltip_line_3 == blank %}
+<li>{{ block.settings.tooltip_line_3 }}</li>
+{% endunless %}
+</ul>
+{% if block.settings.tooltip_link_url != blank and block.settings.tooltip_link_text != blank %}
+<a href="{{ block.settings.tooltip_link_url }}" class="rh-colp-tooltip-link" target="_blank" rel="noopener">{{ block.settings.tooltip_link_text }}</a>
+{% endif %}
+</div>
+</div>
+{% endif %}
+</div>
+</div><style>#rh-col-points-{{ block.id }} { font-family: inherit; {% if block.settings.text_size == 'small' %} font-size: 12px; {% elsif block.settings.text_size == 'large' %} font-size: 16px; {% else %} font-size: 14px; {% endif %} color: {{ block.settings.text_color }}; margin: {{ block.settings.margin_top }}px 0 {{ block.settings.margin_bottom }}px 0; } #rh-col-points-{{ block.id }} .rh-colp-inner { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; {% if block.settings.text_align == 'center' %} justify-content: center; {% elsif block.settings.text_align == 'end' %} justify-content: flex-end; {% else %} justify-content: flex-start; {% endif %} } #rh-col-points-{{ block.id }} .rh-colp-icon { flex-shrink: 0; color: {{ block.settings.accent_color }}; display: flex; align-items: center; } #rh-col-points-{{ block.id }} .rh-colp-content { {% if block.settings.text_align == 'start' %}flex: 1;{% endif %} display: flex; align-items: center; gap: 6px; flex-wrap: wrap; } #rh-col-points-{{ block.id }} .rh-colp-rate { color: {{ block.settings.accent_color }}; font-weight: 700; {% if block.settings.text_size == 'small' %} font-size: 13px; {% elsif block.settings.text_size == 'large' %} font-size: 18px; {% else %} font-size: 15px; {% endif %} } #rh-col-points-{{ block.id }} .rh-colp-tier { background: {{ block.settings.accent_color }}; color: #fff; font-size: 11px; font-weight: 700; padding: 2px 10px; border-radius: 20px; white-space: nowrap; flex-shrink: 0; } #rh-col-points-{{ block.id }} .rh-colp-balance { font-size: 12px; color: {{ block.settings.text_color }}99; {% if block.settings.text_align == 'start' %}margin-left: auto;{% endif %} white-space: nowrap; } #rh-col-points-{{ block.id }} .rh-colp-signin { {% if block.settings.text_align == 'start' %}margin-left: auto;{% endif %} white-space: nowrap; flex-shrink: 0; text-decoration: none; font-size: 12px; font-weight: 600; line-height: 1; } #rh-col-points-{{ block.id }} .rh-colp-signin--link { color: {{ block.settings.accent_color }}; text-decoration: underline; } #rh-col-points-{{ block.id }} .rh-colp-signin--button { color: {{ block.settings.accent_color }}; border: 1.5px solid {{ block.settings.accent_color }}; border-radius: 6px; padding: 5px 13px; background: transparent; transition: background 0.15s; } #rh-col-points-{{ block.id }} .rh-colp-signin--button:hover { background: {{ block.settings.accent_color }}15; } #rh-col-points-{{ block.id }} .rh-colp-signin--badge { color: #fff; background: {{ block.settings.accent_color }}; border-radius: 20px; padding: 5px 14px; } .rh-prod-badge { display: inline-flex; align-items: center; gap: 4px; background: {{ block.settings.accent_color }}18; border: 1px solid {{ block.settings.accent_color }}44; color: {{ block.settings.accent_color }}; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 4px; margin-top: 4px; white-space: nowrap; } #rh-col-points-{{ block.id }}.rh-colp-tmpl--card .rh-colp-inner { background: {{ block.settings.bg_color }}; border: 1.5px solid {{ block.settings.accent_color }}33; border-radius: {{ block.settings.border_radius }}px; padding: 12px 16px; } #rh-col-points-{{ block.id }}.rh-colp-tmpl--minimal .rh-colp-inner { background: transparent; border: none; border-radius: 0; padding: 8px 0; } #rh-col-points-{{ block.id }}.rh-colp-tmpl--strip .rh-colp-inner { background: {{ block.settings.accent_color }}; border: none; border-radius: 0; padding: 10px 20px; } #rh-col-points-{{ block.id }}.rh-colp-tmpl--strip .rh-colp-icon, #rh-col-points-{{ block.id }}.rh-colp-tmpl--strip .rh-colp-rate, #rh-col-points-{{ block.id }}.rh-colp-tmpl--strip .rh-colp-info-btn { color: {{ block.settings.text_color }}; } #rh-col-points-{{ block.id }}.rh-colp-tmpl--strip .rh-colp-tier { background: {{ block.settings.text_color }}30; color: {{ block.settings.text_color }}; } #rh-col-points-{{ block.id }}.rh-colp-tmpl--strip .rh-colp-signin--link { color: {{ block.settings.text_color }}; opacity: 0.9; text-decoration: underline; } #rh-col-points-{{ block.id }}.rh-colp-tmpl--strip .rh-colp-signin--button { color: {{ block.settings.text_color }}; border-color: {{ block.settings.text_color }}80; background: transparent; } #rh-col-points-{{ block.id }}.rh-colp-tmpl--strip .rh-colp-signin--button:hover { background: {{ block.settings.text_color }}15; } #rh-col-points-{{ block.id }}.rh-colp-tmpl--strip .rh-colp-signin--badge { color: {{ block.settings.accent_color }}; background: {{ block.settings.text_color }}; } #rh-col-points-{{ block.id }}.rh-colp-tmpl--pill { {% if block.settings.text_align == 'center' %}text-align: center; {% elsif block.settings.text_align == 'end' %}text-align: right; {% else %}text-align: left;{% endif %} } #rh-col-points-{{ block.id }}.rh-colp-tmpl--pill .rh-colp-inner { display: inline-flex; background: {{ block.settings.bg_color }}; border: 1.5px solid {{ block.settings.accent_color }}33; border-radius: 9999px; padding: 6px 18px; } #rh-col-points-{{ block.id }} .rh-colp-info-wrap { position: relative; flex-shrink: 0; {% if block.settings.text_align == 'start' %}margin-left: auto;{% endif %} display: flex; align-items: center; } #rh-col-points-{{ block.id }} .rh-colp-info-btn { display: flex; align-items: center; justify-content: center; background: none; border: none; cursor: pointer; padding: 2px; color: {{ block.settings.accent_color }}; opacity: 0.75; line-height: 1; } #rh-col-points-{{ block.id }} .rh-colp-info-btn:hover { opacity: 1; } #rh-col-points-{{ block.id }} .rh-colp-tooltip { display: none; position: absolute; right: 0; top: calc(100% + 8px); min-width: 240px; max-width: 300px; background: #fff; border: 1px solid {{ block.settings.accent_color }}33; border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.12); padding: 12px 14px; z-index: 9999; font-size: 13px; color: #333; text-align: left; } #rh-col-points-{{ block.id }} .rh-colp-tooltip::before { content: ''; position: absolute; top: -6px; right: 6px; width: 10px; height: 10px; background: #fff; border-left: 1px solid {{ block.settings.accent_color }}33; border-top: 1px solid {{ block.settings.accent_color }}33; transform: rotate(45deg); } #rh-col-points-{{ block.id }} .rh-colp-info-wrap:hover .rh-colp-tooltip, #rh-col-points-{{ block.id }} .rh-colp-info-wrap.rh-active .rh-colp-tooltip { display: block; } #rh-col-points-{{ block.id }} .rh-colp-tooltip-list { margin: 0 0 6px 0; padding: 0 0 0 16px; list-style: disc; } #rh-col-points-{{ block.id }} .rh-colp-tooltip-list li { margin-bottom: 4px; line-height: 1.4; } #rh-col-points-{{ block.id }} .rh-colp-tooltip-link { display: inline-block; margin-top: 4px; font-size: 12px; color: {{ block.settings.accent_color }}; text-decoration: underline; }</style><script>
 (function() {
-  var SUPABASE_URL  = 'https://jblqyvicxhmqqjhostcj.supabase.co';
-  var ANON_KEY      = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpibHF5dmljeGhtcXFqaG9zdGNqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcxOTU1MTAsImV4cCI6MjA5Mjc3MTUxMH0.pMOn3TKgzp_QqJgOlMzwO7ZRRex-mifWUzhJPwxUndE';
-  var blockId       = '{{ block.id }}';
-  var shopDomain    = {{ shop.permanent_domain | json }};
-  var customerEmail = {{ customer.email | json }};
-  var injectBadges  = {{ block.settings.inject_product_badges }};
-  var fallbackName  = 'Points';
-
-  // ── Tooltip toggle ──────────────────────────────────────────────────────
-  var infoWrap = document.getElementById('rh-colp-info-' + blockId);
-  if (infoWrap) {
-    infoWrap.addEventListener('click', function(e) {
-      e.stopPropagation();
-      infoWrap.classList.toggle('rh-active');
-    });
-    document.addEventListener('click', function() {
-      infoWrap.classList.remove('rh-active');
-    });
-  }
-
-  // ── Earn rate fetch — guests get program default, members get tier rate ──
-  if (!shopDomain) return;
-  var url = SUPABASE_URL + '/functions/v1/get-loyalty-status?shop_domain=' + encodeURIComponent(shopDomain);
-  if (customerEmail) url += '&email=' + encodeURIComponent(customerEmail);
-
-  fetch(url, { headers: { apikey: ANON_KEY, Authorization: 'Bearer ' + ANON_KEY } })
-  .then(function(r) { return r.json(); })
-  .then(function(data) {
-    if (!data || data.error) return;
-
-    var rate    = (data.tier && data.tier.points_earn_rate    != null) ? data.tier.points_earn_rate
-                : (data.default_earn_rate    != null ? data.default_earn_rate    : 1);
-    var divisor = (data.tier && data.tier.points_earn_divisor != null) ? data.tier.points_earn_divisor
-                : (data.default_earn_divisor != null ? data.default_earn_divisor : 1);
-    var name    = (data.program && data.program.points_name) ? data.program.points_name : fallbackName;
-    var tierName = data.tier && data.tier.name ? data.tier.name : '';
-    var balance  = data.points_balance || 0;
-
-    // Update banner rate text
-    var rateEl = document.getElementById('rh-colp-rate-' + blockId);
-    if (rateEl) rateEl.textContent = rate + ' ' + name + ' per ₹' + divisor;
-
-    if (!data.guest) {
-      {% if block.settings.show_tier_badge %}
-      if (tierName) {
-        var tierEl = document.getElementById('rh-colp-tier-' + blockId);
-        if (tierEl) { tierEl.textContent = tierName; tierEl.style.display = ''; }
-      }
-      {% endif %}
-
-      {% if block.settings.show_balance %}
-      var balWrap = document.getElementById('rh-colp-bal-wrap-' + blockId);
-      var balEl   = document.getElementById('rh-colp-bal-'      + blockId);
-      var balName = document.getElementById('rh-colp-bal-name-' + blockId);
-      if (balWrap && balEl) {
-        balEl.textContent = balance.toLocaleString();
-        if (balName) balName.textContent = name;
-        balWrap.style.display = '';
-      }
-      {% endif %}
-    }
-
-    // Inject per-product badges for all visitors (guests see default rate)
-    if (injectBadges) injectProductBadges(rate, divisor, name);
-  })
-  .catch(function() {});
-
-  function injectProductBadges(earnRate, earnDivisor, name) {
-    var priceSelectors = [
-      '.product-item__price .price__regular .price-item--regular',
-      '.price__regular .price-item--regular',
-      '.product-card__price .price-item--regular',
-      '[data-regular-price]',
-      '.product-item__price',
-      '.card__information .price',
-    ];
-    var priceElements = [];
-    for (var i = 0; i < priceSelectors.length; i++) {
-      priceElements = document.querySelectorAll(priceSelectors[i]);
-      if (priceElements.length > 0) break;
-    }
-    if (priceElements.length === 0) return;
-    priceElements.forEach(function(el) {
-      if (el.parentNode && el.parentNode.querySelector('.rh-prod-badge')) return;
-      var priceText = el.textContent.replace(/[^\d.]/g, '').trim();
-      var price = parseFloat(priceText);
-      if (!price || isNaN(price)) return;
-      var pts = earnDivisor > 0 ? Math.floor((price / earnDivisor) * earnRate) : 0;
-      if (pts <= 0) return;
-      var badge = document.createElement('span');
-      badge.className = 'rh-prod-badge';
-      badge.innerHTML = '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg> ' + pts + ' ' + name;
-      el.parentNode.insertBefore(badge, el.nextSibling);
-    });
-  }
+var SUPABASE_URL  = 'https://jblqyvicxhmqqjhostcj.supabase.co';
+var ANON_KEY      = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpibHF5dmljeGhtcXFqaG9zdGNqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcxOTU1MTAsImV4cCI6MjA5Mjc3MTUxMH0.pMOn3TKgzp_QqJgOlMzwO7ZRRex-mifWUzhJPwxUndE';
+var blockId       = '{{ block.id }}';
+var shopDomain    = {{ shop.permanent_domain | json }};
+var customerEmail = {{ customer.email | json }};
+var injectBadges  = {{ block.settings.inject_product_badges }};
+var fallbackName  = 'Points';
+// ── Tooltip toggle ──────────────────────────────────────────────────────
+var infoWrap = document.getElementById('rh-colp-info-' + blockId);
+if (infoWrap) {
+infoWrap.addEventListener('click', function(e) {
+e.stopPropagation();
+infoWrap.classList.toggle('rh-active');
+});
+document.addEventListener('click', function() {
+infoWrap.classList.remove('rh-active');
+});
+}
+if (!shopDomain) return;
+var hdrs = { apikey: ANON_KEY, Authorization: 'Bearer ' + ANON_KEY, 'Content-Type': 'application/json' };
+function setRateText(rate, divisor, name) {
+var rateEl = document.getElementById('rh-colp-rate-' + blockId);
+if (rateEl) rateEl.textContent = rate + ' ' + name + ' per ₹' + divisor;
+}
+// 1. PUBLIC earn preview — sets the rate text + per-product badges for everyone
+//    (get-earn-preview is a GET, zero-PII endpoint; get-loyalty-status is POST + token only).
+fetch(SUPABASE_URL + '/functions/v1/get-earn-preview?shop_domain=' + encodeURIComponent(shopDomain),
+{ headers: { apikey: ANON_KEY, Authorization: 'Bearer ' + ANON_KEY } })
+.then(function(r) { return r.json(); })
+.then(function(d) {
+if (!d || d.error) return;
+var rate    = d.earn_rate != null ? d.earn_rate : 1;
+var divisor = d.earn_divisor != null ? d.earn_divisor : 1;
+var name    = d.points_name || fallbackName;
+setRateText(rate, divisor, name);
+if (injectBadges) injectProductBadges(rate, divisor, name);
+})
+.catch(function() {});
+// 2. Member-only: refine rate to tier + show tier badge / balance (token flow).
+if (!customerEmail) return;
+fetch(SUPABASE_URL + '/functions/v1/issue-widget-token',
+{ method: 'POST', headers: hdrs, body: JSON.stringify({ email: customerEmail, shop_domain: shopDomain }) })
+.then(function(r) { return r.json(); })
+.then(function(tk) {
+if (!tk || !tk.token) return;
+fetch(SUPABASE_URL + '/functions/v1/get-loyalty-status',
+{ method: 'POST', headers: Object.assign({}, hdrs, { 'X-Widget-Token': tk.token }), body: JSON.stringify({ shop_domain: shopDomain }) })
+.then(function(r) { return r.json(); })
+.then(function(data) {
+if (!data || data.error) return;
+var name     = (data.program && data.program.points_name) ? data.program.points_name : fallbackName;
+var tierName = data.tier && data.tier.name ? data.tier.name : '';
+var balance  = data.points_balance || 0;
+if (data.tier && data.tier.points_earn_rate != null) {
+setRateText(data.tier.points_earn_rate, data.tier.points_earn_divisor != null ? data.tier.points_earn_divisor : 1, name);
+}
+{% if block.settings.show_tier_badge %}
+if (tierName) {
+var tierEl = document.getElementById('rh-colp-tier-' + blockId);
+if (tierEl) { tierEl.textContent = tierName; tierEl.style.display = ''; }
+}
+{% endif %}
+{% if block.settings.show_balance %}
+var balWrap = document.getElementById('rh-colp-bal-wrap-' + blockId);
+var balEl   = document.getElementById('rh-colp-bal-'      + blockId);
+var balName = document.getElementById('rh-colp-bal-name-' + blockId);
+if (balWrap && balEl) {
+balEl.textContent = balance.toLocaleString();
+if (balName) balName.textContent = name;
+balWrap.style.display = '';
+}
+{% endif %}
+})
+.catch(function() {});
+})
+.catch(function() {});
+function injectProductBadges(earnRate, earnDivisor, name) {
+var priceSelectors = [
+'.product-item__price .price__regular .price-item--regular',
+'.price__regular .price-item--regular',
+'.product-card__price .price-item--regular',
+'[data-regular-price]',
+'.product-item__price',
+'.card__information .price',
+];
+var priceElements = [];
+for (var i = 0; i < priceSelectors.length; i++) {
+priceElements = document.querySelectorAll(priceSelectors[i]);
+if (priceElements.length > 0) break;
+}
+if (priceElements.length === 0) return;
+priceElements.forEach(function(el) {
+if (el.parentNode && el.parentNode.querySelector('.rh-prod-badge')) return;
+var priceText = el.textContent.replace(/[^\d.]/g, '').trim();
+var price = parseFloat(priceText);
+if (!price || isNaN(price)) return;
+var pts = earnDivisor > 0 ? Math.floor((price / earnDivisor) * earnRate) : 0;
+if (pts <= 0) return;
+var badge = document.createElement('span');
+badge.className = 'rh-prod-badge';
+badge.innerHTML = '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg> ' + pts + ' ' + name;
+el.parentNode.insertBefore(badge, el.nextSibling);
+});
+}
 })();
 </script>
-
 {% schema %}
 {
-  "name": "Collection Points Banner",
-  "target": "section",
-  "settings": [
-    {
-      "type": "select",
-      "id": "template",
-      "label": "Banner Style",
-      "info": "Pick a style. Use Styling settings below to customise colours and spacing.",
-      "options": [
-        { "value": "card",    "label": "Card — coloured background box (default)" },
-        { "value": "minimal", "label": "Minimal — text only, no background" },
-        { "value": "strip",   "label": "Strip — full-width accent colour bar" },
-        { "value": "pill",    "label": "Pill — compact badge, floats inline" }
-      ],
-      "default": "card"
-    },
-    {
-      "type": "text",
-      "id": "label_text",
-      "label": "Label Text",
-      "default": "Shop & earn"
-    },
-    {
-      "type": "header",
-      "content": "Layout"
-    },
-    {
-      "type": "select",
-      "id": "text_align",
-      "label": "Text Alignment",
-      "options": [
-        { "value": "start",  "label": "Left" },
-        { "value": "center", "label": "Centre" },
-        { "value": "end",    "label": "Right" }
-      ],
-      "default": "start"
-    },
-    {
-      "type": "select",
-      "id": "text_size",
-      "label": "Text Size",
-      "options": [
-        { "value": "small",  "label": "Small" },
-        { "value": "medium", "label": "Medium (default)" },
-        { "value": "large",  "label": "Large" }
-      ],
-      "default": "medium"
-    },
-    {
-      "type": "header",
-      "content": "Display Options"
-    },
-    {
-      "type": "checkbox",
-      "id": "show_balance",
-      "label": "Show current balance (logged-in members)",
-      "default": false
-    },
-    {
-      "type": "checkbox",
-      "id": "show_tier_badge",
-      "label": "Show tier badge (logged-in members)",
-      "default": true
-    },
-    {
-      "type": "checkbox",
-      "id": "inject_product_badges",
-      "label": "Inject points badges on product cards",
-      "info": "Adds 'X Points' badge below prices in the collection grid.",
-      "default": true
-    },
-    {
-      "type": "checkbox",
-      "id": "show_signin_nudge",
-      "label": "Show 'Sign in to earn' for guests",
-      "default": true
-    },
-    {
-      "type": "select",
-      "id": "signin_style",
-      "label": "Sign-in style",
-      "info": "How the sign-in call-to-action looks when shown to guests.",
-      "options": [
-        { "value": "link",   "label": "Link — underlined text" },
-        { "value": "button", "label": "Button — outlined pill" },
-        { "value": "badge",  "label": "Badge — filled accent chip" }
-      ],
-      "default": "link"
-    },
-    {
-      "type": "header",
-      "content": "Info Tooltip"
-    },
-    {
-      "type": "checkbox",
-      "id": "show_info_tooltip",
-      "label": "Show ℹ info icon with tooltip",
-      "default": true
-    },
-    {
-      "type": "text",
-      "id": "tooltip_line_1",
-      "label": "Tooltip line 1",
-      "default": "Points will be rewarded once your order is delivered"
-    },
-    {
-      "type": "text",
-      "id": "tooltip_line_2",
-      "label": "Tooltip line 2",
-      "default": "You will get bonus points based on the tier you are on"
-    },
-    {
-      "type": "text",
-      "id": "tooltip_line_3",
-      "label": "Tooltip line 3 (optional)"
-    },
-    {
-      "type": "text",
-      "id": "tooltip_link_text",
-      "label": "Tooltip link label (optional)",
-      "default": "Learn more about our rewards"
-    },
-    {
-      "type": "url",
-      "id": "tooltip_link_url",
-      "label": "Tooltip link URL (optional)"
-    },
-    {
-      "type": "header",
-      "content": "Styling"
-    },
-    {
-      "type": "color",
-      "id": "accent_color",
-      "label": "Accent Color",
-      "info": "Strip template uses this as its background colour.",
-      "default": "#3B82F6"
-    },
-    {
-      "type": "color",
-      "id": "bg_color",
-      "label": "Background Color",
-      "info": "Applies to Card and Pill templates. Ignored by Strip.",
-      "default": "#EFF6FF"
-    },
-    {
-      "type": "color",
-      "id": "text_color",
-      "label": "Text Color",
-      "info": "For Strip, use a colour that reads well against your Accent Color — typically white (#ffffff).",
-      "default": "#1E3A5F"
-    },
-    {
-      "type": "range",
-      "id": "border_radius",
-      "label": "Corner Radius",
-      "min": 0,
-      "max": 20,
-      "step": 2,
-      "default": 8
-    },
-    {
-      "type": "range",
-      "id": "margin_top",
-      "label": "Margin Top (px)",
-      "min": 0,
-      "max": 40,
-      "step": 4,
-      "default": 0
-    },
-    {
-      "type": "range",
-      "id": "margin_bottom",
-      "label": "Margin Bottom (px)",
-      "min": 0,
-      "max": 40,
-      "step": 4,
-      "default": 16
-    }
-  ]
+"name": "Collection Points Banner",
+"target": "section",
+"settings": [
+{
+"type": "select",
+"id": "template",
+"label": "Banner Style",
+"info": "Pick a style. Use Styling settings below to customise colours and spacing.",
+"options": [
+{ "value": "card",    "label": "Card — coloured background box (default)" },
+{ "value": "minimal", "label": "Minimal — text only, no background" },
+{ "value": "strip",   "label": "Strip — full-width accent colour bar" },
+{ "value": "pill",    "label": "Pill — compact badge, floats inline" }
+],
+"default": "card"
+},
+{
+"type": "text",
+"id": "label_text",
+"label": "Label Text",
+"default": "Shop & earn"
+},
+{
+"type": "header",
+"content": "Layout"
+},
+{
+"type": "select",
+"id": "text_align",
+"label": "Text Alignment",
+"options": [
+{ "value": "start",  "label": "Left" },
+{ "value": "center", "label": "Centre" },
+{ "value": "end",    "label": "Right" }
+],
+"default": "start"
+},
+{
+"type": "select",
+"id": "text_size",
+"label": "Text Size",
+"options": [
+{ "value": "small",  "label": "Small" },
+{ "value": "medium", "label": "Medium (default)" },
+{ "value": "large",  "label": "Large" }
+],
+"default": "medium"
+},
+{
+"type": "header",
+"content": "Display Options"
+},
+{
+"type": "checkbox",
+"id": "show_balance",
+"label": "Show current balance (logged-in members)",
+"default": false
+},
+{
+"type": "checkbox",
+"id": "show_tier_badge",
+"label": "Show tier badge (logged-in members)",
+"default": true
+},
+{
+"type": "checkbox",
+"id": "inject_product_badges",
+"label": "Inject points badges on product cards",
+"info": "Adds 'X Points' badge below prices in the collection grid.",
+"default": true
+},
+{
+"type": "checkbox",
+"id": "show_signin_nudge",
+"label": "Show 'Sign in to earn' for guests",
+"default": true
+},
+{
+"type": "select",
+"id": "signin_style",
+"label": "Sign-in style",
+"info": "How the sign-in call-to-action looks when shown to guests.",
+"options": [
+{ "value": "link",   "label": "Link — underlined text" },
+{ "value": "button", "label": "Button — outlined pill" },
+{ "value": "badge",  "label": "Badge — filled accent chip" }
+],
+"default": "link"
+},
+{
+"type": "header",
+"content": "Info Tooltip"
+},
+{
+"type": "checkbox",
+"id": "show_info_tooltip",
+"label": "Show ℹ info icon with tooltip",
+"default": true
+},
+{
+"type": "text",
+"id": "tooltip_line_1",
+"label": "Tooltip line 1",
+"default": "Points will be rewarded once your order is delivered"
+},
+{
+"type": "text",
+"id": "tooltip_line_2",
+"label": "Tooltip line 2",
+"default": "You will get bonus points based on the tier you are on"
+},
+{
+"type": "text",
+"id": "tooltip_line_3",
+"label": "Tooltip line 3 (optional)"
+},
+{
+"type": "text",
+"id": "tooltip_link_text",
+"label": "Tooltip link label (optional)",
+"default": "Learn more about our rewards"
+},
+{
+"type": "url",
+"id": "tooltip_link_url",
+"label": "Tooltip link URL (optional)"
+},
+{
+"type": "header",
+"content": "Styling"
+},
+{
+"type": "color",
+"id": "accent_color",
+"label": "Accent Color",
+"info": "Strip template uses this as its background colour.",
+"default": "#3B82F6"
+},
+{
+"type": "color",
+"id": "bg_color",
+"label": "Background Color",
+"info": "Applies to Card and Pill templates. Ignored by Strip.",
+"default": "#EFF6FF"
+},
+{
+"type": "color",
+"id": "text_color",
+"label": "Text Color",
+"info": "For Strip, use a colour that reads well against your Accent Color — typically white (#ffffff).",
+"default": "#1E3A5F"
+},
+{
+"type": "range",
+"id": "border_radius",
+"label": "Corner Radius",
+"min": 0,
+"max": 20,
+"step": 2,
+"default": 8
+},
+{
+"type": "range",
+"id": "margin_top",
+"label": "Margin Top (px)",
+"min": 0,
+"max": 40,
+"step": 4,
+"default": 0
+},
+{
+"type": "range",
+"id": "margin_bottom",
+"label": "Margin Bottom (px)",
+"min": 0,
+"max": 40,
+"step": 4,
+"default": 16
+}
+]
 }
 {% endschema %}

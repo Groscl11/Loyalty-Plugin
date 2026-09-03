@@ -1,0 +1,85 @@
+{{ 'pre-purchase-rewards.css' | asset_url | stylesheet_tag }}
+<script src="{{ 'pre-purchase-rewards.js' | asset_url }}" defer></script>
+<div id="rh-sticky-{{ block.id }}"
+class="rh-sticky-wrap"
+style="--rh-accent:{{ block.settings.accent_color }};--rh-bar-bg:{{ block.settings.bar_bg }};--rh-bar-text:{{ block.settings.bar_text_color }};{% unless request.design_mode %}display:none{% endunless %}"
+{{ block.shopify_attributes }}>
+<div class="rh-sticky-bar" id="rh-sticky-bar-{{ block.id }}">
+<div class="rh-sticky-bar-left" id="rh-sticky-bl-{{ block.id }}">
+<span class="rh-sticky-bar-icon">🎁</span>
+<div class="rh-sticky-bar-text">
+<span class="rh-sticky-bar-title">{{ block.settings.bar_text }}</span>
+<span class="rh-sticky-bar-brands" id="rh-sticky-brands-{{ block.id }}">{% if request.design_mode %}Partner Brand · Brand Two · Brand Three{% else %}Loading…{% endif %}</span>
+</div>
+</div>
+<div class="rh-sticky-bar-actions">
+<button class="rh-sticky-expand-btn" id="rh-sticky-exp-{{ block.id }}" type="button">
+{{ block.settings.cta_text }}
+<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="18 15 12 9 6 15"/></svg>
+</button>
+<button class="rh-sticky-dismiss" id="rh-sticky-dis-{{ block.id }}" type="button" aria-label="Dismiss">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+</button>
+</div>
+</div>
+<div class="rh-sticky-panel" id="rh-sticky-panel-{{ block.id }}" style="display:none">
+<div class="rh-sticky-panel-hd">
+<p class="rh-sticky-panel-title">🎁 {{ block.settings.panel_title }}</p>
+<button class="rh-sticky-collapse" id="rh-sticky-col-{{ block.id }}" type="button" aria-label="Collapse">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+</button>
+</div>
+<p class="rh-sticky-panel-sub">{{ block.settings.panel_subtitle }}</p>
+<div class="rh-sticky-cards-row" id="rh-sticky-cards-{{ block.id }}">
+<div class="rh-sticky-card-loading"><span class="rh-ppr-spinner" style="border-top-color:{{ block.settings.accent_color }}"></span>Loading…</div>
+</div>
+<a href="{{ block.settings.shop_url }}" class="rh-sticky-shop-btn">
+{{ block.settings.shop_btn_text }}
+<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
+</a>
+</div>
+</div>
+<div id="rh-sticky-pill-{{ block.id }}"
+class="rh-sticky-pill pos-{{ block.settings.pill_position }}"
+style="--rh-accent:{{ block.settings.accent_color }};display:none">
+<button id="rh-sticky-popen-{{ block.id }}" type="button">
+<span>🎁</span><span>{{ block.settings.bar_text }}</span>
+</button>
+</div>
+<script>
+(window._RhPPRQueue = window._RhPPRQueue || []).push(function() {
+window.RhPPR_initStickyBanner({
+id: '{{ block.id }}',
+campaignId: '{{ block.settings.campaign_id }}'
+});
+});
+</script>
+{% schema %}
+{
+"name": "PPR - Sticky Banner",
+"target": "section",
+"settings": [
+{ "type": "header", "content": "Campaign" },
+{ "type": "text", "id": "campaign_id", "label": "Campaign ID", "info": "Find in GoSelf Admin → Campaigns." },
+{ "type": "header", "content": "Messaging" },
+{ "type": "text", "id": "bar_text",       "label": "Collapsed bar text",    "default": "Unlock partner rewards with your order" },
+{ "type": "text", "id": "cta_text",       "label": "Expand button text",    "default": "See Offers ↑" },
+{ "type": "text", "id": "panel_title",    "label": "Panel title",           "default": "Rewards With Every Order" },
+{ "type": "text", "id": "panel_subtitle", "label": "Panel subtitle",        "default": "Claim exclusive vouchers after you place your order." },
+{ "type": "url",  "id": "shop_url",       "label": "Shop button link" },
+{ "type": "text", "id": "shop_btn_text",  "label": "Shop button text",      "default": "Shop & Claim Rewards" },
+{ "type": "header", "content": "Style" },
+{ "type": "color", "id": "accent_color",    "label": "Accent colour",      "default": "#6366f1" },
+{ "type": "color", "id": "bar_bg",          "label": "Bar background",     "default": "#1e1b4b" },
+{ "type": "color", "id": "bar_text_color",  "label": "Bar text colour",    "default": "#ffffff" },
+{
+"type": "select", "id": "pill_position", "label": "Dismissed pill position",
+"options": [
+{ "value": "right", "label": "Bottom right" },
+{ "value": "left",  "label": "Bottom left"  }
+],
+"default": "right"
+}
+]
+}
+{% endschema %}

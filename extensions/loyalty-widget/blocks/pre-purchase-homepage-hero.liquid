@@ -1,0 +1,107 @@
+{{ 'pre-purchase-rewards.css' | asset_url | stylesheet_tag }}
+<script src="{{ 'pre-purchase-rewards.js' | asset_url }}" defer></script>
+<section id="rh-hero-{{ block.id }}"
+class="rh-hero-wrap"
+style="--rh-accent:{{ block.settings.accent_color }};--rh-grad-from:{{ block.settings.gradient_from }};--rh-grad-to:{{ block.settings.gradient_to }};--rh-headline:{{ block.settings.headline_color }};--rh-sub-color:{{ block.settings.sub_color }};--rh-btn-bg:{{ block.settings.btn_bg }};--rh-btn-text:{{ block.settings.btn_text_color }};--rh-radius:{{ block.settings.border_radius }}px;--rh-mt:{{ block.settings.section_margin }}px;--rh-mb:{{ block.settings.section_margin }}px;--rh-pad-v:{{ block.settings.padding_v }}px;--rh-pad-h:{{ block.settings.padding_h }}px;{% unless request.design_mode %}display:none{% endunless %}"
+{{ block.shopify_attributes }}>
+<div class="rh-hero-bg" style="background:linear-gradient(135deg,{{ block.settings.gradient_from }} 0%,{{ block.settings.gradient_to }} 100%)">
+<div class="rh-hero-inner">
+<span class="rh-hero-eyebrow">{{ block.settings.eyebrow }}</span>
+<h2 class="rh-hero-hl">{{ block.settings.headline }}</h2>
+<p class="rh-hero-sub">{{ block.settings.subheadline }}</p>
+<div class="rh-hero-brands" id="rh-hero-brands-{{ block.id }}">
+{% if request.design_mode %}
+<div class="rh-hero-brand-pill">
+<div class="rh-hero-brand-initials">B1</div>
+<div><div style="font-size:13px;font-weight:700;color:#111">Partner Brand</div><div class="rh-hero-brand-value">Exclusive Offer</div></div>
+</div>
+<div class="rh-hero-brand-pill">
+<div class="rh-hero-brand-initials">B2</div>
+<div><div style="font-size:13px;font-weight:700;color:#111">Brand Two</div><div class="rh-hero-brand-value">Free Voucher</div></div>
+</div>
+<div class="rh-hero-brand-pill">
+<div class="rh-hero-brand-initials">B3</div>
+<div><div style="font-size:13px;font-weight:700;color:#111">Brand Three</div><div class="rh-hero-brand-value">₹500 Off</div></div>
+</div>
+{% else %}
+<div class="rh-hero-brand-loading" id="rh-hero-load-{{ block.id }}">
+<span class="rh-hero-spinner"></span>
+</div>
+{% endif %}
+</div>
+{% if block.settings.show_reward_cards %}
+<div class="rh-hero-cards" id="rh-hero-cards-{{ block.id }}" {% unless request.design_mode %}style="display:none"{% endunless %}>
+{% if request.design_mode %}
+<div class="rh-hero-card">
+<div class="rh-hero-card-logo-initials">B1</div>
+<span class="rh-hero-card-brand">Brand One</span>
+<span class="rh-hero-card-title">Exclusive Partner Offer</span>
+<span class="rh-hero-card-val">₹500 Off</span>
+</div>
+<div class="rh-hero-card">
+<div class="rh-hero-card-logo-initials">B2</div>
+<span class="rh-hero-card-brand">Brand Two</span>
+<span class="rh-hero-card-title">Free Lifestyle Product</span>
+<span class="rh-hero-card-val">Free</span>
+</div>
+<div class="rh-hero-card">
+<div class="rh-hero-card-logo-initials">B3</div>
+<span class="rh-hero-card-brand">Brand Three</span>
+<span class="rh-hero-card-title">Wellness Voucher</span>
+<span class="rh-hero-card-val">₹200 Credit</span>
+</div>
+{% endif %}
+</div>
+{% endif %}
+<div class="rh-hero-cta-wrap">
+<a href="{{ block.settings.cta_url }}" class="rh-hero-cta-btn">
+{{ block.settings.cta_text }}
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
+</a>
+{% if block.settings.secondary_text != blank %}
+<p class="rh-hero-sec-text">{{ block.settings.secondary_text }}</p>
+{% endif %}
+</div>
+</div>
+</div>
+</section>
+<script>
+(window._RhPPRQueue = window._RhPPRQueue || []).push(function() {
+window.RhPPR_initHomepageHero({
+id: '{{ block.id }}',
+campaignId: '{{ block.settings.campaign_id }}',
+showCards: {{ block.settings.show_reward_cards | json }}
+});
+});
+</script>
+{% schema %}
+{
+"name": "PPR - Homepage Hero",
+"target": "section",
+"settings": [
+{ "type": "header", "content": "Campaign" },
+{ "type": "text", "id": "campaign_id", "label": "Campaign ID", "info": "Find in GoSelf Admin → Campaigns." },
+{ "type": "header", "content": "Messaging" },
+{ "type": "text", "id": "eyebrow", "label": "Eyebrow tag", "default": "🎁 Partner Rewards Included" },
+{ "type": "text", "id": "headline", "label": "Headline", "default": "Shop & Unlock Exclusive Rewards" },
+{ "type": "textarea", "id": "subheadline", "label": "Sub-headline", "default": "Every order earns you premium vouchers from our brand partners — delivered to your inbox." },
+{ "type": "url",  "id": "cta_url",  "label": "CTA button link" },
+{ "type": "text", "id": "cta_text", "label": "CTA button text", "default": "Shop & Earn Rewards" },
+{ "type": "text", "id": "secondary_text", "label": "Small text under button (optional)", "default": "No minimum order required" },
+{ "type": "checkbox", "id": "show_reward_cards", "label": "Show individual reward cards", "default": true },
+{ "type": "header", "content": "Colours" },
+{ "type": "color", "id": "gradient_from",    "label": "Gradient start colour", "default": "#4f46e5" },
+{ "type": "color", "id": "gradient_to",      "label": "Gradient end colour",   "default": "#7c3aed" },
+{ "type": "color", "id": "accent_color",     "label": "Accent colour",          "default": "#6366f1" },
+{ "type": "color", "id": "headline_color",   "label": "Headline colour",        "default": "#ffffff" },
+{ "type": "color", "id": "sub_color",        "label": "Sub-headline colour",    "default": "#e0e7ff" },
+{ "type": "color", "id": "btn_bg",           "label": "Button background",      "default": "#ffffff" },
+{ "type": "color", "id": "btn_text_color",   "label": "Button text colour",     "default": "#4f46e5" },
+{ "type": "header", "content": "Layout" },
+{ "type": "range", "id": "border_radius",  "label": "Corner radius (px)", "min": 0,  "max": 32, "step": 4,  "default": 20 },
+{ "type": "range", "id": "padding_v",      "label": "Vertical padding (px)",  "min": 24, "max": 96, "step": 8,  "default": 56 },
+{ "type": "range", "id": "padding_h",      "label": "Horizontal padding (px)","min": 16, "max": 80, "step": 8,  "default": 24 },
+{ "type": "range", "id": "section_margin", "label": "Section margin (px)",    "min": 0,  "max": 64, "step": 8,  "default": 32 }
+]
+}
+{% endschema %}

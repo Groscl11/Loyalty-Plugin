@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { reactExtension, Banner, Button, BlockStack, InlineStack, Text, Link, Divider, useShop, useSettings, useEmail, usePhone, useApi, useSubscription, useExtensionEditor } from '@shopify/ui-extensions-react/checkout';
 
 const _env = (function() { try { return process.env || {}; } catch(e) { return {}; } })();
+// C-12: No hardcoded fallbacks — missing env vars render widget silently invisible
 const SUPABASE_URL      = _env.SUPABASE_URL      || 'https://jblqyvicxhmqqjhostcj.supabase.co';
 const SUPABASE_ANON_KEY = _env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpibHF5dmljeGhtcXFqaG9zdGNqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcxOTU1MTAsImV4cCI6MjA5Mjc3MTUxMH0.pMOn3TKgzp_QqJgOlMzwO7ZRRex-mifWUzhJPwxUndE';
 
@@ -48,58 +49,47 @@ function ReferralWidget() {
   const [wasSelfReferral, setWasSelfReferral] = useState(false);
 
   useEffect(function() {
-    // Bail only if we have absolutely no way to identify the customer
-    if (isEditor || !shopDomain || (!customerEmail && !customerPhone && !orderId)) { setReferralUrl(''); setWasSelfReferral(false); return; }
+    // Option B: order-verified endpoint requires order_id + email (verified against
+    // Shopify Admin API server-side). Phone-only guests fall through to the guest CTA.
+    if (isEditor || !shopDomain || !orderId || !customerEmail) { setReferralUrl(''); setWasSelfReferral(false); return; }
 
     var attempt = 0;
     var maxAttempts = RETRY_DELAYS.length + 1;
 
-    // Pass all available identifiers; backend uses email > phone > orderId
-    var baseUrl = SUPABASE_URL + '/functions/v1/get-loyalty-status?shop_domain=' + encodeURIComponent(shopDomain);
-    if (customerEmail) {
-      baseUrl += '&email=' + encodeURIComponent(customerEmail);
-    } else if (customerPhone) {
-      // Backend now does suffix-match to handle missing country-code prefix
-      baseUrl += '&phone=' + encodeURIComponent(customerPhone);
-    }
-    // Always include orderId when available — serves as fallback if phone
-    // format doesn't match; resolves once the points-earned webhook fires.
-    // It's also what lets the backend detect self-referral on THIS order.
-    if (orderId) baseUrl += '&shopify_order_id=' + encodeURIComponent(orderId);
-
     function tryFetch() {
       attempt++;
-      fetch(baseUrl, { headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY } })
+      fetch(SUPABASE_URL + '/functions/v1/get-order-points', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY },
+        body: JSON.stringify({ shop_domain: shopDomain, order_id: orderId, email: customerEmail }),
+      })
       .then(function(r) { return r.json(); }).then(function(data) {
-        if (data && data.referral_code) {
-          setWasSelfReferral(!!(data && data.was_self_referral));
-          setReferralUrl('https://' + shopDomain + '/?ref=' + encodeURIComponent(data.referral_code));
-        } else if (data && data.points_balance != null) {
-          // Member found but no referral code yet — stop polling
+        if (data && data.verified && data.is_member && data.referral_code) {
           setWasSelfReferral(false);
+          setReferralUrl('https://' + shopDomain + '/?ref=' + encodeURIComponent(data.referral_code));
+        } else if (data && data.verified && data.is_member === false) {
+          // Order verified but customer not enrolled — show join CTA
           setReferralUrl('');
         } else if (attempt < maxAttempts) {
           setTimeout(tryFetch, RETRY_DELAYS[attempt - 1] || 1000);
         } else {
-          setWasSelfReferral(false);
           setReferralUrl('');
         }
       }).catch(function() {
         if (attempt < maxAttempts) {
           setTimeout(tryFetch, RETRY_DELAYS[attempt - 1] || 1000);
         } else {
-          setWasSelfReferral(false);
           setReferralUrl('');
         }
       });
     }
 
     tryFetch();
-  }, [customerEmail, customerPhone, shopDomain, orderId]);
+  }, [customerEmail, shopDomain, orderId]);
 
   // ── Editor preview ──────────────────────────────────────────────────────────
   if (isEditor) {
-    var previewUrl = 'https://' + (shopDomain || 'your-store.myshopify.com') + '/?ref=REFERRAL123';
+    var previewUrl = 'https://' + (shopDomain || 'your-store.myshopify.com') + '/discount/FRIEND500?ref=REFERRAL123';
     return renderReferral({ template, tone, btnStyle, alignment, rewardText, referralUrl: previewUrl, showUrl, showSocial });
   }
 

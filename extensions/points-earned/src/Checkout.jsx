@@ -8,6 +8,7 @@ import {
 } from '@shopify/ui-extensions-react/checkout';
 
 const _env = (function() { try { return process.env || {}; } catch(e) { return {}; } })();
+// C-12: No hardcoded fallbacks — missing env vars render widget silently invisible
 const SUPABASE_URL      = _env.SUPABASE_URL      || 'https://jblqyvicxhmqqjhostcj.supabase.co';
 const SUPABASE_ANON_KEY = _env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpibHF5dmljeGhtcXFqaG9zdGNqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcxOTU1MTAsImV4cCI6MjA5Mjc3MTUxMH0.pMOn3TKgzp_QqJgOlMzwO7ZRRex-mifWUzhJPwxUndE';
 
@@ -43,29 +44,21 @@ function CheckoutPointsReminder() {
   useEffect(function() {
     if (isEditor || !shopDomain) { setMemberData(false); return; }
 
-    // Guests: no email/phone yet at checkout start — show sign-in nudge
-    if (!customerEmail && !customerPhone) { setMemberData(false); return; }
-
-    var baseUrl = SUPABASE_URL + '/functions/v1/get-loyalty-status?shop_domain=' + encodeURIComponent(shopDomain);
-    if (customerEmail) {
-      baseUrl += '&email=' + encodeURIComponent(customerEmail);
-    } else if (customerPhone) {
-      baseUrl += '&phone=' + encodeURIComponent(customerPhone);
-    }
-
-    fetch(baseUrl, {
+    // Option B: at checkout there's no order yet, so we use the PUBLIC earn-preview
+    // endpoint (zero PII — just the earn rate) to show "earn X points on this order".
+    fetch(SUPABASE_URL + '/functions/v1/get-earn-preview?shop_domain=' + encodeURIComponent(shopDomain), {
       headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY },
     })
     .then(function(r) { return r.json(); })
     .then(function(data) {
-      if (data && !data.error && data.points_balance != null) {
+      if (data && !data.error && data.earn_rate != null) {
         setMemberData(data);
       } else {
         setMemberData(false);
       }
     })
     .catch(function() { setMemberData(false); });
-  }, [customerEmail, customerPhone, shopDomain]);
+  }, [shopDomain]);
 
   // ── Editor preview ───────────────────────────────────────────────────────────
   if (isEditor) {
@@ -75,32 +68,18 @@ function CheckoutPointsReminder() {
   // Loading — don't render anything to avoid layout shift during checkout
   if (memberData === null) return null;
 
-  // ── Member found ─────────────────────────────────────────────────────────────
-  if (memberData && memberData.points_balance != null) {
-    var rate    = memberData.tier && memberData.tier.points_earn_rate    != null ? memberData.tier.points_earn_rate    : 1;
-    var divisor = memberData.tier && memberData.tier.points_earn_divisor != null ? memberData.tier.points_earn_divisor : 1;
-    var name    = memberData.program && memberData.program.points_name   ? memberData.program.points_name : 'Points';
+  // ── Earn preview (public, no PII) — shown to everyone at checkout ─────────────
+  if (memberData && memberData.earn_rate != null) {
+    var rate    = memberData.earn_rate    != null ? memberData.earn_rate    : 1;
+    var divisor = memberData.earn_divisor != null ? memberData.earn_divisor : 1;
+    var name    = memberData.points_name  ? memberData.points_name : 'Points';
     var earned  = divisor > 0 ? Math.floor((orderTotal / divisor) * rate) : 0;
-    var balance = memberData.points_balance || 0;
 
     // Only render if the order earns something
     if (earned <= 0) return null;
 
-    return renderCheckoutPoints({ template, tone, alignment, headingText, showBalance, earned, balance, name });
-  }
-
-  // ── Non-member or guest — sign-in nudge ────────────────────────────────────
-  if (!customer && shopDomain) {
-    var validTone  = ['success', 'info', 'warning', 'critical'].indexOf(tone) !== -1 ? tone : 'info';
-    var btnKind    = ['primary', 'secondary', 'plain'].indexOf(signinBtnStyle) !== -1 ? signinBtnStyle : 'secondary';
-    return (
-      <Banner status={validTone}>
-        <BlockStack spacing='tight' inlineAlignment={alignment}>
-          <Text emphasis='bold'>Earn rewards on this order</Text>
-          <Text size='small' appearance='subdued'>Sign in to earn loyalty points every time you shop.</Text>
-        </BlockStack>
-      </Banner>
-    );
+    // No member balance available pre-order, so suppress the balance line
+    return renderCheckoutPoints({ template, tone, alignment, headingText, showBalance: false, earned, balance: 0, name });
   }
 
   return null;

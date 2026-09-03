@@ -9,6 +9,7 @@
 # attribution (cart note_attributes) stays on the existing embed mechanism.
 
 api_version = "2025-07"
+uid = "fa4e9c68-6a50-47e8-cc64-43b6f601fe6a3454fbb7"
 
 [[extensions]]
 type = "web_pixel_extension"

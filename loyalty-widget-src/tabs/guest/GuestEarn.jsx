@@ -1,118 +1,130 @@
 /**
- * GuestEarn — GoSelf Loyalty Widget V6
- * Shows all earn rules. Gate fires on "Join →" button click only.
+ * GuestEarn — earn rules shown locked for unauthenticated visitors.
+ * Rules are visible (opacity 0.65) with a lock icon — teasing what members get.
+ * Action buttons redirect to /account/login via onGate.
  */
 
 import React from 'react';
+import { tokens, accentSoft, fmtPts } from '../../utils/tokens.js';
 
 const GuestEarn = React.memo(function GuestEarn({ data, config, onGate }) {
   const earnRules = data.earnRules || data.merchant?.earnRules || [];
 
   if (earnRules.length === 0) {
     return (
-      <div style={{ padding: '40px 16px', textAlign: 'center', color: '#9ca3af' }}>
+      <div style={{ padding: '40px 16px', textAlign: 'center', color: tokens.textMuted, background: tokens.surface }}>
         <div style={{ fontSize: 32, marginBottom: 12 }}>🌟</div>
-        <div style={{ fontSize: 14, fontWeight: 600, color: '#374151', marginBottom: 6 }}>Earn rules coming soon</div>
-        <div style={{ fontSize: 12 }}>Check back shortly — earning opportunities will appear here.</div>
+        <div style={{ fontSize: 14, fontWeight: 600, color: tokens.text, marginBottom: 8 }}>
+          Ways to earn coming soon
+        </div>
+        <button
+          onClick={() => onGate('sign in')}
+          style={{
+            background: config.accentColor, color: '#fff',
+            border: 'none', borderRadius: tokens.radiusMd,
+            padding: '10px 20px', fontSize: 13, fontWeight: 600, cursor: 'pointer',
+            marginTop: 8,
+          }}
+        >
+          Sign in to check back →
+        </button>
       </div>
     );
   }
 
   return (
-    <div style={{ padding: '16px 16px 24px' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: tokens.surface }}>
+      <div style={{ flex: 1, overflowY: 'auto', padding: '16px 16px 80px' }}>
 
-      {/* Info strip — not a gate */}
-      <div
-        style={{
-          background: '#f0f9ff',
-          borderRadius: 10,
-          padding: '10px 14px',
-          fontSize: 12,
-          color: '#0369a1',
-          marginBottom: 16,
-          border: '1px solid #bae6fd',
-        }}
-      >
-        💡 Join the program to start earning {config.pointsNoun} automatically on every order.
+        <div style={{ fontSize: 22, fontWeight: 600, color: tokens.text, marginBottom: 4 }}>
+          Ways to earn
+        </div>
+        <div style={{ fontSize: 13, color: tokens.textMuted, marginBottom: 16 }}>
+          Sign in to start earning {config.pointsNoun || 'points'} automatically.
+        </div>
+
+        {earnRules.map(rule => (
+          <LockedEarnRow key={rule.id} rule={rule} config={config} onGate={onGate} />
+        ))}
       </div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-        {earnRules.map(rule => (
-          <EarnRuleRow key={rule.id} rule={rule} config={config} onGate={onGate} />
-        ))}
+      {/* ─── Sticky unlock bar ───────────────────────────────────────── */}
+      <div style={{
+        position: 'sticky', bottom: 0,
+        background: tokens.surface,
+        borderTop: `1px solid ${tokens.border}`,
+        padding: '12px 16px',
+        flexShrink: 0,
+      }}>
+        <button
+          onClick={() => onGate('start earning points')}
+          style={{
+            width: '100%', padding: 13,
+            background: config.accentColor, color: '#fff',
+            border: 'none', borderRadius: tokens.radiusLg,
+            fontSize: 14, fontWeight: 700, cursor: 'pointer',
+          }}
+        >
+          🔓 Sign in to unlock all rewards
+        </button>
       </div>
     </div>
   );
 });
 
-function EarnRuleRow({ rule, config, onGate }) {
+function LockedEarnRow({ rule, config, onGate }) {
+  const pts = rule.pointValue
+    || (rule.points_reward > 0 ? `+${fmtPts(rule.points_reward)} ${config.pointsAbbrev || 'pts'}` : '');
+
   return (
     <div
       style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: 12,
-        padding: '12px 14px',
-        background: '#fff',
-        border: '1px solid #f3f4f6',
-        borderRadius: 12,
-        marginBottom: 8,
+        display: 'flex', alignItems: 'center', gap: 12,
+        padding: 14, background: tokens.surface,
+        border: `1px solid ${tokens.border}`,
+        borderRadius: tokens.radiusLg, marginBottom: 10,
+        opacity: 0.72,
+        position: 'relative',
       }}
     >
-      <span style={{ fontSize: 26, width: 32, textAlign: 'center', flexShrink: 0 }}>
-        {rule.icon}
-      </span>
-      <div style={{ flex: 1 }}>
-        <div style={{ fontSize: 13, fontWeight: 600, color: '#111827' }}>{rule.name || rule.label}</div>
-        <div style={{ fontSize: 12, color: '#16a34a', fontWeight: 500, marginTop: 1 }}>
-          {rule.pointValue || (rule.points_reward > 0 ? `+${Number(rule.points_reward).toLocaleString('en-IN')} pts` : '')}
-        </div>
+      {/* Lock overlay badge */}
+      <div style={{
+        position: 'absolute', top: 8, right: 8,
+        fontSize: 12, color: tokens.textSubtle,
+      }}>
+        🔒
       </div>
-      {rule.featured ? (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-end' }}>
-          <span
-            style={{
-              background: '#f59e0b',
-              color: '#fff',
-              fontSize: 9,
-              fontWeight: 700,
-              borderRadius: 4,
-              padding: '2px 6px',
-              textTransform: 'uppercase',
-            }}
-          >
+
+      <div style={{
+        width: 40, height: 40, borderRadius: 10,
+        background: accentSoft(config.accentColor),
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        fontSize: 22, flexShrink: 0,
+      }}>
+        {rule.icon || '✨'}
+      </div>
+      <div style={{ flex: 1, minWidth: 0, paddingRight: 20 }}>
+        <div style={{ fontSize: 14, fontWeight: 600, color: tokens.text }}>
+          {rule.name || rule.label}
+        </div>
+        {rule.featured && (
+          <span style={{
+            display: 'inline-block', marginTop: 4, marginRight: 6,
+            background: tokens.warning, color: '#fff',
+            fontSize: 10, fontWeight: 700, borderRadius: 999,
+            padding: '2px 8px', textTransform: 'uppercase', letterSpacing: 0.5,
+          }}>
             Popular
           </span>
-          <button
-            onClick={() => onGate(rule.label.toLowerCase())}
-            style={joinBtn(config.accentColor)}
-          >
-            Start
-          </button>
-        </div>
-      ) : (
-        <button
-          onClick={() => onGate(rule.label.toLowerCase())}
-          style={joinBtn(config.accentColor)}
-        >
-          Join →
-        </button>
-      )}
+        )}
+        {pts && (
+          <div style={{ fontSize: 12, color: tokens.successText, fontWeight: 600, marginTop: 4 }}>
+            {pts}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
-
-const joinBtn = (color) => ({
-  background: color,
-  color: '#fff',
-  border: 'none',
-  borderRadius: 8,
-  padding: '6px 14px',
-  fontSize: 12,
-  fontWeight: 600,
-  cursor: 'pointer',
-  flexShrink: 0,
-  whiteSpace: 'nowrap',
-});
 
 export default GuestEarn;

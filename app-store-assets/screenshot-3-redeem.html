@@ -1,0 +1,70 @@
+<link rel="stylesheet" href="_shared.css">
+<style>
+  html,body{width:1600px;height:900px}
+  .stage{width:1600px;height:900px;background:linear-gradient(120deg,#f7f8fa,#eef0fb);padding:60px 80px;position:relative}
+  .head{max-width:900px;margin:0 auto 46px;text-align:center}
+  .head .kick{display:inline-block;background:var(--indigo);color:#fff;font-weight:700;font-size:15px;padding:8px 18px;border-radius:999px}
+  .head h1{font-size:46px;font-weight:800;letter-spacing:-.8px;margin-top:18px}
+  .head p{font-size:20px;color:var(--gray-500);margin-top:14px}
+  .cols{display:flex;gap:60px;justify-content:center;align-items:flex-start}
+  /* redeem widget */
+  .redeem{width:360px}
+  .rd-card{background:#fff;border-radius:20px;box-shadow:0 30px 70px -25px rgba(17,24,39,.32);border:1px solid var(--gray-200);overflow:hidden}
+  .rd-top{background:linear-gradient(135deg,var(--indigo),var(--indigo-700));color:#fff;padding:22px;text-align:center}
+  .rd-top .t{font-weight:700;font-size:15px}
+  .rd-top .chk{width:60px;height:60px;border-radius:50%;background:rgba(255,255,255,.18);display:flex;align-items:center;justify-content:center;font-size:30px;margin:14px auto 8px}
+  .rd-top .msg{font-size:18px;font-weight:700;margin-top:6px}
+  .rd-top .sub{font-size:13px;opacity:.85;margin-top:4px}
+  .rd-body{padding:22px}
+  .rd-label{font-size:12px;font-weight:700;color:var(--gray-500);text-transform:uppercase;letter-spacing:.5px}
+  .code{margin-top:10px;border:2px dashed var(--indigo);border-radius:12px;padding:16px;text-align:center;
+    font-family:ui-monospace,Menlo,monospace;font-size:24px;font-weight:700;letter-spacing:2px;color:var(--indigo-700);background:#f5f3ff}
+  .copy{margin-top:12px;background:var(--indigo);color:#fff;text-align:center;font-weight:700;padding:14px;border-radius:12px;font-size:15px}
+  .apply{margin-top:10px;text-align:center;font-size:13px;color:var(--gray-500)}
+  /* checkout summary */
+  .checkout{width:420px;background:#fff;border-radius:20px;box-shadow:0 20px 50px -25px rgba(17,24,39,.25);border:1px solid var(--gray-200);padding:30px 32px}
+  .checkout h3{font-size:20px;font-weight:800;margin-bottom:22px}
+  .li{display:flex;justify-content:space-between;font-size:16px;padding:12px 0;color:var(--gray-700)}
+  .li.disc{color:var(--green);font-weight:700}
+  .li.tot{border-top:2px solid var(--gray-200);margin-top:6px;padding-top:16px;font-size:22px;font-weight:800;color:var(--ink)}
+  .applied{display:flex;align-items:center;gap:10px;background:#ecfdf5;border:1px solid #a7f3d0;border-radius:12px;padding:14px 16px;margin:8px 0 18px}
+  .applied .b{width:26px;height:26px;border-radius:50%;background:var(--green);color:#fff;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:800}
+  .applied .txt{font-size:14px;font-weight:700;color:#065f46}
+  .applied .code2{margin-left:auto;font-family:ui-monospace,monospace;font-size:13px;color:#047857;font-weight:700}
+  .pay{margin-top:22px;background:var(--ink);color:#fff;text-align:center;font-weight:700;padding:16px;border-radius:12px;font-size:16px}
+</style>
+<div class="stage">
+  <div class="head">
+    <span class="kick">🎁 Redeem points for real discounts</span>
+    <h1>Points become discount codes, applied at checkout</h1>
+    <p>Customers redeem in one tap — the code is generated instantly and drops straight into their cart.</p>
+  </div>
+  <div class="cols">
+    <div class="redeem">
+      <div class="rd-card">
+        <div class="rd-top">
+          <div class="t">★ Rewards</div>
+          <div class="chk">✓</div>
+          <div class="msg">₹200 off unlocked</div>
+          <div class="sub">500 points redeemed</div>
+        </div>
+        <div class="rd-body">
+          <div class="rd-label">Your discount code</div>
+          <div class="code">SAVE200-XY4K</div>
+          <div class="copy">Copy code</div>
+          <div class="apply">Automatically applied at checkout</div>
+        </div>
+      </div>
+    </div>
+    <div class="checkout">
+      <h3>Order summary</h3>
+      <div class="applied"><div class="b">✓</div><div class="txt">Loyalty reward applied</div><div class="code2">SAVE200-XY4K</div></div>
+      <div class="li"><span>Vitamin C Glow Serum</span><span>₹1,290</span></div>
+      <div class="li"><span>Subtotal</span><span>₹1,290</span></div>
+      <div class="li disc"><span>Loyalty discount</span><span>−₹200</span></div>
+      <div class="li"><span>Shipping</span><span>₹0</span></div>
+      <div class="li tot"><span>Total</span><span>₹1,090</span></div>
+      <div class="pay">Complete order</div>
+    </div>
+  </div>
+</div>

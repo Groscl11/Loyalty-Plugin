@@ -1,0 +1,77 @@
+<link rel="stylesheet" href="_shared.css">
+<style>
+  html,body{width:1600px;height:900px}
+  .app{width:1600px;height:900px;display:flex;background:var(--bg)}
+  /* sidebar */
+  .side{width:264px;background:#1e1b4b;color:#c7d2fe;padding:28px 20px;flex-shrink:0}
+  .side .logo{display:flex;align-items:center;gap:10px;color:#fff;font-weight:800;font-size:20px;margin-bottom:36px}
+  .side .logo .mark{width:34px;height:34px;border-radius:9px;background:linear-gradient(150deg,#fde68a,#f59e0b);
+    display:flex;align-items:center;justify-content:center;color:#78350f;font-weight:800;font-size:20px}
+  .side .nav div{padding:12px 14px;border-radius:10px;font-size:15px;font-weight:600;margin-bottom:4px;color:#a5b4fc;display:flex;align-items:center;gap:11px}
+  .side .nav div.on{background:rgba(255,255,255,.10);color:#fff}
+  /* main */
+  .main{flex:1;padding:40px 48px;overflow:hidden}
+  .top{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+  .top .store{font-size:14px;color:var(--gray-500);font-weight:600}
+  .h1{font-size:34px;font-weight:800;letter-spacing:-.5px}
+  .sub{color:var(--gray-500);font-size:16px;margin-top:6px;margin-bottom:30px}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:22px}
+  .card{background:#fff;border:1px solid var(--gray-200);border-radius:18px;padding:26px 28px;box-shadow:0 2px 6px rgba(17,24,39,.03)}
+  .card .lbl{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--gray-400)}
+  .earn-val{font-size:30px;font-weight:800;margin-top:14px}
+  .earn-val .u{font-size:17px;color:var(--gray-500);font-weight:600}
+  .pill{display:inline-block;margin-top:16px;background:var(--indigo);color:#fff;font-weight:700;font-size:13px;padding:9px 16px;border-radius:10px}
+  .toggle{display:flex;align-items:center;justify-content:space-between;margin-top:18px}
+  .toggle .t{font-size:15px;font-weight:600}
+  .toggle .sw{width:52px;height:30px;border-radius:999px;background:var(--green);position:relative}
+  .toggle .sw::after{content:"";position:absolute;width:24px;height:24px;border-radius:50%;background:#fff;top:3px;right:3px}
+  .rewards{grid-column:1/3;background:#fff;border:1px solid var(--gray-200);border-radius:18px;padding:26px 28px}
+  .rewards .hd{display:flex;justify-content:space-between;align-items:center;margin-bottom:18px}
+  .rewards .hd h3{font-size:19px;font-weight:800}
+  .rewards .add{background:var(--indigo);color:#fff;font-weight:700;font-size:13px;padding:9px 16px;border-radius:10px}
+  .rrow{display:flex;align-items:center;gap:16px;padding:16px 0;border-top:1px solid var(--gray-100)}
+  .rrow .ic{width:44px;height:44px;border-radius:11px;background:var(--amber-100);display:flex;align-items:center;justify-content:center;font-size:22px}
+  .rrow .t{font-size:16px;font-weight:700}
+  .rrow .d{font-size:13.5px;color:var(--gray-500);margin-top:2px}
+  .rrow .cost{margin-left:auto;font-weight:800;color:var(--amber-800);background:var(--amber-100);padding:8px 14px;border-radius:10px;font-size:14px}
+  .rrow .status{margin-left:14px;font-size:12.5px;font-weight:700;color:var(--green)}
+  .save{margin-top:26px;display:flex;justify-content:flex-end}
+  .save .btn{background:var(--ink);color:#fff;font-weight:700;font-size:15px;padding:14px 30px;border-radius:12px}
+</style>
+<div class="app">
+  <div class="side">
+    <div class="logo"><span class="mark">g</span> Goself</div>
+    <div class="nav">
+      <div>📊 Dashboard</div>
+      <div>👥 Members</div>
+      <div class="on">🏆 Loyalty Program</div>
+      <div>🎁 Rewards</div>
+      <div>📣 Campaigns</div>
+      <div>⚙️ Settings</div>
+    </div>
+  </div>
+  <div class="main">
+    <div class="top"><div></div><div class="store">aurelia-skincare.myshopify.com</div></div>
+    <div class="h1">Loyalty Program</div>
+    <div class="sub">Set how customers earn points and what they can redeem them for.</div>
+    <div class="grid">
+      <div class="card">
+        <div class="lbl">Earning rule</div>
+        <div class="earn-val">1 point <span class="u">per ₹1 spent</span></div>
+        <div class="pill">Points awarded on paid orders</div>
+      </div>
+      <div class="card">
+        <div class="lbl">Membership</div>
+        <div class="toggle"><div class="t">Auto-enroll new customers</div><div class="sw"></div></div>
+        <div class="toggle" style="margin-top:14px"><div class="t">Welcome bonus · 100 points</div><div class="sw"></div></div>
+      </div>
+      <div class="rewards">
+        <div class="hd"><h3>Rewards catalog</h3><div class="add">+ Add reward</div></div>
+        <div class="rrow"><div class="ic">🏷️</div><div><div class="t">₹200 off any order</div><div class="d">Fixed-amount discount code</div></div><div class="cost">500 points</div><div class="status">● Active</div></div>
+        <div class="rrow"><div class="ic">🎁</div><div><div class="t">10% off order</div><div class="d">Percentage discount code</div></div><div class="cost">800 points</div><div class="status">● Active</div></div>
+        <div class="rrow"><div class="ic">🚚</div><div><div class="t">Free shipping</div><div class="d">Free-shipping discount code</div></div><div class="cost">300 points</div><div class="status">● Active</div></div>
+      </div>
+    </div>
+    <div class="save"><div class="btn">Save changes</div></div>
+  </div>
+</div>

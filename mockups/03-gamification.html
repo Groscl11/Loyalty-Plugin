@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GoSelf — Gamification (Mockup)</title>
+<style>
+  :root{ --brand:#6d5ef6; --brand2:#8b7cf8; --ink:#1f2430; --muted:#6b7280; --line:#e9ebf1; }
+  *{box-sizing:border-box} body{margin:0;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;background:#0e1020;color:var(--ink);min-height:100vh}
+  .stage{display:grid;grid-template-columns:1fr 1fr;gap:26px;max-width:980px;margin:0 auto;padding:40px 20px}
+  @media(max-width:820px){.stage{grid-template-columns:1fr}}
+  .panel{background:#fff;border-radius:22px;padding:26px;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.35)}
+  .panel .kj{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--brand);font-weight:800}
+  .panel h2{margin:6px 0 4px;font-size:22px} .panel .sub{color:var(--muted);font-size:13px;margin-bottom:20px}
+  /* WHEEL */
+  .wheelWrap{position:relative;width:260px;height:260px;margin:6px auto 18px}
+  .wheel{width:260px;height:260px;border-radius:50%;border:8px solid #fff;box-shadow:0 0 0 6px #ece9fe,0 10px 30px rgba(0,0,0,.18);
+    background:conic-gradient(#6d5ef6 0 45deg,#8b7cf8 45deg 90deg,#f59e0b 90deg 135deg,#ef4444 135deg 180deg,#10b981 180deg 225deg,#6d5ef6 225deg 270deg,#8b7cf8 270deg 315deg,#f59e0b 315deg 360deg);
+    transition:transform 4s cubic-bezier(.17,.67,.21,.99)}
+  .seg{position:absolute;inset:0;pointer-events:none}
+  .lab{position:absolute;left:50%;top:12px;transform-origin:0 118px;font-size:11px;font-weight:800;color:#fff;transform:translateX(-50%) rotate(var(--r))}
+  .hub{position:absolute;left:50%;top:50%;width:54px;height:54px;border-radius:50%;background:#fff;transform:translate(-50%,-50%);display:grid;place-items:center;font-size:22px;box-shadow:0 4px 12px rgba(0,0,0,.2)}
+  .pin{position:absolute;left:50%;top:-6px;transform:translateX(-50%);width:0;height:0;border-left:12px solid transparent;border-right:12px solid transparent;border-top:20px solid #1f2430;z-index:3}
+  .btn{border:0;border-radius:30px;padding:13px 30px;font-size:15px;font-weight:800;cursor:pointer;background:linear-gradient(135deg,var(--brand),var(--brand2));color:#fff}
+  .result{margin-top:16px;font-size:15px;font-weight:700;color:#16a34a;min-height:22px}
+  /* SCRATCH */
+  .scratch{position:relative;width:260px;height:150px;margin:6px auto 16px;border-radius:16px;overflow:hidden;border:2px dashed #c9c0fb}
+  .prize{position:absolute;inset:0;display:grid;place-items:center;background:#f3f1fe}
+  .prize b{font-size:26px;color:var(--brand)}
+  .foil{position:absolute;inset:0;background:linear-gradient(135deg,#b9b3d6,#8e87b8);display:grid;place-items:center;color:#fff;font-weight:800;cursor:pointer;transition:opacity .5s}
+  .foil.gone{opacity:0;pointer-events:none}
+  .cap{font-size:11px;color:var(--muted);margin-top:6px}
+  .pwr{text-align:center;color:#8b90a3;font-size:12px;padding:8px 0 28px}
+  .gate{font-size:12px;color:var(--muted);background:#faf9ff;border:1px solid #eae6ff;border-radius:10px;padding:8px 10px;margin-top:14px}
+</style>
+</head>
+<body>
+  <div class="stage">
+    <!-- SPIN THE WHEEL -->
+    <div class="panel">
+      <div class="kj">Spin &amp; Win</div>
+      <h2>Spin the Wheel</h2>
+      <div class="sub">One free spin per day — win points, coupons or partner vouchers</div>
+      <div class="wheelWrap">
+        <div class="pin"></div>
+        <div class="wheel" id="wheel">
+          <div class="seg">
+            <div class="lab" style="--r:22deg">50 pts</div>
+            <div class="lab" style="--r:67deg">₹100</div>
+            <div class="lab" style="--r:112deg">10 pts</div>
+            <div class="lab" style="--r:157deg">Try again</div>
+            <div class="lab" style="--r:202deg">200 pts</div>
+            <div class="lab" style="--r:247deg">Free ship</div>
+            <div class="lab" style="--r:292deg">500 pts</div>
+            <div class="lab" style="--r:337deg">5%</div>
+          </div>
+        </div>
+        <div class="hub">🎁</div>
+      </div>
+      <button class="btn" id="spinBtn" onclick="spin()">SPIN NOW</button>
+      <div class="result" id="res"></div>
+      <div class="gate">🔒 Server decides the prize (weighted) · 1 play/customer/day · email required for guests</div>
+    </div>
+
+    <!-- SCRATCH CARD -->
+    <div class="panel">
+      <div class="kj">Surprise</div>
+      <h2>Scratch Card</h2>
+      <div class="sub">Scratch to reveal your reward after purchase</div>
+      <div class="scratch">
+        <div class="prize"><div><b>+200 Points</b><div class="cap">added to your balance</div></div></div>
+        <div class="foil" id="foil" onclick="this.classList.add('gone')">✋ Tap to scratch</div>
+      </div>
+      <div class="cap">Triggers: post-purchase · on-site popup · widget tab</div>
+      <div style="margin-top:34px"></div>
+      <div class="kj">Also supported</div>
+      <h2 style="font-size:18px">Mystery box · Gift with purchase</h2>
+      <div class="sub">Same prize engine, different skins</div>
+      <div class="gate">🔒 Frequency caps, prize inventory limits &amp; fraud guards enforced server-side</div>
+    </div>
+  </div>
+  <div class="pwr">⚡ powered by <b style="color:#fff">GoSelf</b> — Gamification module</div>
+
+<script>
+  var prizes=[{a:0,t:'+50 Points! 🎉'},{a:45,t:'₹100 coupon! 🎟️'},{a:90,t:'+10 Points'},{a:135,t:'Try again tomorrow'},{a:180,t:'+200 Points! 🎉'},{a:225,t:'Free shipping! 🚚'},{a:270,t:'+500 Points! 🏆'},{a:315,t:'5% off! ✨'}];
+  function spin(){var b=document.getElementById('spinBtn');b.disabled=true;b.style.opacity=.5;
+    var i=4; // server-decided -> "200 pts"
+    var deg=360*5 + (360 - prizes[i].a - 22);
+    document.getElementById('wheel').style.transform='rotate('+deg+'deg)';
+    setTimeout(function(){document.getElementById('res').textContent='You won '+prizes[i].t;},4100);}
+</script>
+</body>
+</html>

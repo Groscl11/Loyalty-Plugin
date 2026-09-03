@@ -1,82 +1,111 @@
 /**
- * MemberRedeem — GoSelf Loyalty Widget V6
- * 3 sub-tabs: Store | Partners | Free Products
- * Opens VoucherModal on redeem action.
+ * MemberRedeem — rewards catalog with multi-type filter.
+ *
+ * Layout:
+ *   1. Title + balance hint
+ *   2. Wallet entry strip (jumps to MemberWallet)
+ *   3. Filter chips: All / Your store / Partners / Marketplace
+ *   4. Reward rows (sorted with claimed last, then by points cost)
+ *
+ * Preserves existing redeem flow: redeem-reward edge fn, existingCodes/
+ * existingBrandCodes mapping, VoucherModal for success. Uses canonical
+ * sub-types: store/partner/free (mapped to "Your store/Partners/Marketplace"
+ * in the UI per the mockup).
  */
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import VoucherModal from '../../components/VoucherModal.jsx';
+import { tokens, accentSoft, fmtPts } from '../../utils/tokens.js';
 import { SUPABASE_URL, SUPABASE_HEADERS } from '../../utils/supabase.js';
 
-const SUB_TABS = ['store', 'partners', 'free'];
+const FILTERS = [
+  { id: 'all',     label: 'All' },
+  { id: 'store',   label: 'Your store' },
+  { id: 'partner', label: 'Partners' },
+  { id: 'free',    label: 'Marketplace' },
+];
 
-// Sort items so unclaimed come first; among claimed, latest (highest expires_at) first
+const TYPE_META = {
+  store:   { icon: '💸', label: 'Your store',  bgGetter: (accent) => accentSoft(accent), textColorGetter: (accent) => accent },
+  partner: { icon: '👜', label: 'Partner',     bgGetter: ()       => tokens.partnerSoft, textColorGetter: ()       => tokens.partner },
+  free:    { icon: '🎁', label: 'Marketplace', bgGetter: ()       => tokens.successSoft, textColorGetter: ()       => tokens.successText },
+};
+
 function sortWithClaimedLast(items, existingCodeMap) {
   return [...items].sort((a, b) => {
     const aCode = existingCodeMap[a.id] || existingCodeMap[a.rewardId];
     const bCode = existingCodeMap[b.id] || existingCodeMap[b.rewardId];
     if (!aCode && bCode) return -1;
     if (aCode && !bCode) return 1;
-    if (aCode && bCode) {
-      const aTime = aCode.expires_at ? new Date(aCode.expires_at).getTime() : 0;
-      const bTime = bCode.expires_at ? new Date(bCode.expires_at).getTime() : 0;
-      return bTime - aTime; // latest claimed first among claimed
-    }
+    // Within unclaimed, cheapest first
+    if (!aCode && !bCode) return (a.pointsCost || 0) - (b.pointsCost || 0);
     return 0;
   });
 }
 
-const MemberRedeem = React.memo(function MemberRedeem({ data, config }) {
-  const [voucherItem, setVoucherItem] = useState(null);
-
-  const [redeeming, setRedeeming] = useState(false);
-  const [redeemError, setRedeemError] = useState(null);
+const MemberRedeem = React.memo(function MemberRedeem({ data, config, setTab }) {
+  const [voucherItem, setVoucherItem]     = useState(null);
+  const [redeeming, setRedeeming]         = useState(false);
+  const [redeemError, setRedeemError]     = useState(null);
+  const [filter, setFilter]               = useState('all');
+  // Optimistic map: offerId → { code } — populated immediately after redemption
+  // so "✓ Claimed" badge shows without waiting for the async refetch to complete.
+  const [optimisticClaimed, setOptimisticClaimed] = useState({});
 
   const redeemCat  = data.redeemCatalog || {};
   const customer   = data.customer || {};
+  const wallet     = data.wallet || [];
   const shopDomain = (typeof window !== 'undefined' && (window.Shopify?.shop || window.location?.hostname)) || '';
+  const activeVouchers = wallet.filter(c => c.status === 'active').length;
 
-  // Prefer backend-grouped catalog; fall back to legacy flat catalog
   const existingCodes      = redeemCat.existingCodes      || {};
   const existingBrandCodes = redeemCat.existingBrandCodes || {};
 
-  const storeItems   = sortWithClaimedLast(
-    redeemCat.discountRewards || (data.catalog || []).filter(r => r.type === 'discount'),
-    existingCodes
-  );
-  const partnerItems = sortWithClaimedLast(
-    redeemCat.brandRewards    || (data.catalog || []).filter(r => r.type === 'partner'),
-    { ...existingCodes, ...existingBrandCodes }
-  );
-  const freeItems    = sortWithClaimedLast(
-    redeemCat.manualRewards   || (data.catalog || []).filter(r => r.type === 'free'),
-    existingCodes
-  );
+  // Normalise + tag each item with a canonical type for filtering
+  const allItems = useMemo(() => {
+    const store = (redeemCat.discountRewards || (data.catalog || []).filter(r => r.type === 'discount')).map(r => ({ ...r, _type: 'store' }));
+    const partner = (redeemCat.brandRewards || (data.catalog || []).filter(r => r.type === 'partner')).map(r => ({ ...r, _type: 'partner' }));
+    const free = (redeemCat.manualRewards || (data.catalog || []).filter(r => r.type === 'free')).map(r => ({ ...r, _type: 'free' }));
 
-  // Determine which tabs have content to show
-  const showStore    = storeItems.length > 0;
-  const showPartners = partnerItems.length > 0 && config.showPartnerBrands;
-  const showFree     = freeItems.length > 0 && config.enableFreeProducts;
+    const sortedStore   = sortWithClaimedLast(store,   existingCodes);
+    const sortedPartner = sortWithClaimedLast(partner, { ...existingCodes, ...existingBrandCodes });
+    const sortedFree    = sortWithClaimedLast(free,    existingCodes);
 
-  // Auto-select first available tab (derived — no useState needed)
-  const firstAvailable = showStore ? 'store' : showPartners ? 'partners' : showFree ? 'free' : 'store';
-  const [subTab, setSubTab] = useState(firstAvailable);
+    return [...sortedStore, ...sortedPartner, ...sortedFree];
+  }, [redeemCat, data.catalog, existingCodes, existingBrandCodes]);
+
+  // Filter availability — hide partner/free chips if disabled by merchant or empty
+  const counts = {
+    all:     allItems.length,
+    store:   allItems.filter(i => i._type === 'store').length,
+    partner: allItems.filter(i => i._type === 'partner').length,
+    free:    allItems.filter(i => i._type === 'free').length,
+  };
+  const visibleFilters = FILTERS.filter(f => {
+    if (f.id === 'partner' && !config.showPartnerBrands) return false;
+    if (f.id === 'free'    && !config.enableFreeProducts) return false;
+    return f.id === 'all' || counts[f.id] > 0;
+  });
+
+  const filteredItems = filter === 'all' ? allItems : allItems.filter(i => i._type === filter);
 
   const handleRedeem = useCallback(async (item) => {
-    // If already claimed, show existing code in modal
-    const existingCode = item.type === 'partner'
-      ? (existingBrandCodes[item.rewardId] || existingBrandCodes[item.id] || existingCodes[item.rewardId] || existingCodes[item.id])
-      : existingCodes[item.id];
+    const type = item._type;
+    const existingCode =
+      optimisticClaimed[item.rewardId] || optimisticClaimed[item.id] ||
+      (type === 'partner'
+        ? (existingBrandCodes[item.rewardId] || existingBrandCodes[item.id] || existingCodes[item.rewardId] || existingCodes[item.id])
+        : existingCodes[item.id]);
 
     if (existingCode) {
       setVoucherItem({
-        code:          existingCode.code || null,
-        title:         item.title,
-        brandName:     item.brandName || null,
-        brandUrl:      item.brandUrl  || null,
-        isPartner:     item.type === 'partner',
-        isFreeProduct: item.type === 'free',
-        accentColor:   item.type === 'partner' ? '#10b981' : item.type === 'free' ? '#16a34a' : config.accentColor,
+        code: existingCode.code || null,
+        title: item.title,
+        brandName: item.brandName || null,
+        brandUrl: item.brandUrl || null,
+        isPartner: type === 'partner',
+        isFreeProduct: type === 'free',
+        accentColor: TYPE_META[type].textColorGetter(config.accentColor),
         discountValue: item.discountValue,
       });
       return;
@@ -89,202 +118,179 @@ const MemberRedeem = React.memo(function MemberRedeem({ data, config }) {
     setRedeemError(null);
     let code = null;
     try {
-      // Store and partner rewards go through redeem-reward endpoint.
-      // distribution_id is passed for partner rewards so the server can resolve
-      // the correct offer_distributions row (and authoritative points_cost).
       const redeemBody = {
-        member_user_id: customer.customerId || null,   // UUID only — null makes backend use email fallback
+        member_user_id: customer.customerId || null,
         email:          customer.email || null,
         shop_domain:    shopDomain,
-        reward_id:      item.type === 'partner' ? item.rewardId : item.id,
+        reward_id:      type === 'partner' ? item.rewardId : item.id,
+        redeemed_from:  'loyalty_widget',
       };
-      if (item.type === 'partner' && item.id) {
-        redeemBody.config_id = item.id; // item.id is config_id (offer_distributions.id)
-      }
-      console.log('[GoSelf] redeem request:', JSON.stringify(redeemBody));
+      if (type === 'partner' && item.id) redeemBody.config_id = item.id;
+
       const res = await fetch(`${SUPABASE_URL}/functions/v1/redeem-reward`, {
-        method: 'POST',
-        headers: SUPABASE_HEADERS,
+        method: 'POST', headers: SUPABASE_HEADERS,
         body: JSON.stringify(redeemBody),
       });
       const json = await res.json();
-      console.log('[GoSelf] redeem response:', JSON.stringify(json));
       if (json.success === false || json.error) {
         const debugSuffix = json.current_points !== undefined
           ? ` — backend sees balance:${json.current_points} cost:${json.required_points}`
           : '';
         setRedeemError((json.error || 'Redemption failed. Please try again.') + debugSuffix);
-        setRedeeming(false);
         return;
       }
       code = json.discount_code || json.code || json.voucher_code || null;
+      // Optimistic update: mark as claimed immediately so "✓ Claimed" shows
+      // without waiting for the async refetch to complete.
+      const claimKey = type === 'partner' ? (item.rewardId || item.id) : item.id;
+      setOptimisticClaimed(prev => ({ ...prev, [claimKey]: { code: code || item.code || null } }));
       data.refetch('member_rewards');
       data.refetch('wallet');
       data.refetch('customer_session');
     } catch (e) {
-      console.warn('[GoSelf] redeem failed:', e.message);
       setRedeemError('Could not connect. Please check your connection and try again.');
-      setRedeeming(false);
       return;
     } finally {
       setRedeeming(false);
     }
 
     setVoucherItem({
-      code:          code || item.code || null,
-      title:         item.title,
-      brandName:     item.brandName || null,
-      brandUrl:      item.brandUrl  || null,
-      isPartner:     item.type === 'partner',
-      isFreeProduct: item.type === 'free',
-      accentColor:   item.type === 'partner' ? '#10b981' : item.type === 'free' ? '#16a34a' : config.accentColor,
+      code: code || item.code || null,
+      title: item.title,
+      brandName: item.brandName || null,
+      brandUrl: item.brandUrl || null,
+      isPartner: type === 'partner',
+      isFreeProduct: type === 'free',
+      accentColor: TYPE_META[type].textColorGetter(config.accentColor),
       discountValue: item.discountValue,
     });
-  }, [customer, shopDomain, data, config.accentColor, redeeming, existingCodes, existingBrandCodes]);
+  }, [customer, shopDomain, data, config.accentColor, redeeming, existingCodes, existingBrandCodes, optimisticClaimed]);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', position: 'relative' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: tokens.surface }}>
 
-      {/* Balance strip */}
-      <div style={{ padding: '10px 16px', borderBottom: '1px solid #f3f4f6', fontSize: 12, color: '#6b7280' }}>
-        Balance: <strong style={{ color: '#111827' }}>
-          {Number(customer.pointsBalance || 0).toLocaleString('en-IN')} {config.pointsAbbrev}
-        </strong>
-      </div>
+      <div style={{ flex: 1, overflowY: 'auto', padding: '16px 16px 24px' }}>
 
-      {/* Error toast */}
-      {redeemError && (
-        <div
-          style={{
-            margin: '8px 16px 0',
-            background: '#fef2f2',
-            border: '1px solid #fecaca',
-            borderRadius: 8,
-            padding: '8px 12px',
-            fontSize: 12,
-            color: '#dc2626',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: 8,
-          }}
-        >
-          <span>⚠ {redeemError}</span>
-          <button
-            onClick={() => setRedeemError(null)}
-            style={{ border: 'none', background: 'transparent', color: '#dc2626', cursor: 'pointer', fontSize: 14, padding: 0 }}
-          >×</button>
+        {/* Title + balance */}
+        <div style={{ fontSize: 22, fontWeight: 600, color: tokens.text, marginBottom: 4 }}>
+          Rewards
         </div>
-      )}
+        <div style={{ fontSize: 13, color: tokens.textMuted, marginBottom: 12 }}>
+          You have <strong style={{ color: tokens.text }}>{fmtPts(customer.pointsBalance)} {config.pointsAbbrev || 'pts'}</strong> to spend.
+        </div>
 
-      {/* Sub-tab bar — only show tabs that have items */}
-      <div style={{ display: 'flex', borderBottom: '1px solid #f3f4f6', padding: '0 16px' }}>
-        {SUB_TABS.map(t => {
-          if (t === 'store'    && !showStore)    return null;
-          if (t === 'partners' && !showPartners) return null;
-          if (t === 'free'     && !showFree)     return null;
-          const label = t === 'store' ? '🏪 Store' : t === 'partners' ? '🤝 Partners' : '🎁 Free';
-          return (
-            <button
-              key={t}
-              onClick={() => setSubTab(t)}
-              style={{
-                flex: 1,
-                padding: '10px 0',
-                border: 'none',
-                background: 'transparent',
-                borderBottom: subTab === t ? `2px solid ${config.accentColor}` : '2px solid transparent',
-                color: subTab === t ? config.accentColor : '#6b7280',
-                fontWeight: subTab === t ? 600 : 400,
-                fontSize: 12,
-                cursor: 'pointer',
-              }}
-            >
-              {label}
-            </button>
-          );
-        })}
-      </div>
+        {/* Wallet entry strip */}
+        {activeVouchers > 0 && (
+          <button
+            onClick={() => setTab('wallet')}
+            style={{
+              width: '100%', textAlign: 'left',
+              background: 'linear-gradient(135deg, #1e1b4b, #312e81)',
+              color: '#fff', borderRadius: tokens.radiusLg,
+              padding: '14px 16px', marginBottom: 16, border: 'none',
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              cursor: 'pointer',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <span style={{ fontSize: 22 }}>💼</span>
+              <span style={{ fontSize: 13 }}>
+                <strong style={{ display: 'block', fontSize: 14, fontWeight: 600, marginBottom: 2 }}>
+                  Your wallet
+                </strong>
+                {activeVouchers} unused voucher{activeVouchers !== 1 ? 's' : ''}
+              </span>
+            </div>
+            <span style={{ fontSize: 16 }}>→</span>
+          </button>
+        )}
 
-      <div style={{ flex: 1, overflowY: 'auto', padding: '14px 16px 24px' }}>
-
-        {/* No rewards at all */}
-        {!showStore && !showPartners && !showFree && (
-          <div style={{ textAlign: 'center', color: '#9ca3af', fontSize: 13, paddingTop: 40 }}>
-            <div style={{ fontSize: 28, marginBottom: 10 }}>🎁</div>
-            <div style={{ fontWeight: 600, color: '#374151', marginBottom: 6 }}>No rewards available yet</div>
-            <div style={{ fontSize: 11, lineHeight: 1.5 }}>Keep earning points — rewards will appear here soon.</div>
+        {/* Filter chips */}
+        {visibleFilters.length > 2 && (
+          <div style={{
+            display: 'flex', gap: 6, marginBottom: 16,
+            overflowX: 'auto', paddingBottom: 4,
+          }}>
+            {visibleFilters.map(f => (
+              <button
+                key={f.id}
+                onClick={() => setFilter(f.id)}
+                style={{
+                  border: filter === f.id ? `1px solid ${config.accentColor}` : `1px solid ${tokens.border}`,
+                  background: filter === f.id ? config.accentColor : tokens.surface,
+                  color: filter === f.id ? '#fff' : tokens.text,
+                  padding: '6px 12px', borderRadius: 999,
+                  fontSize: 12, fontWeight: 500, cursor: 'pointer',
+                  whiteSpace: 'nowrap', flexShrink: 0,
+                }}
+              >
+                {f.label}
+              </button>
+            ))}
           </div>
         )}
 
-        {subTab === 'store' && storeItems.map(item => (
-          <RedeemCard
-            key={item.id}
+        {/* Error toast */}
+        {redeemError && (
+          <div style={{
+            background: tokens.dangerSoft, border: `1px solid #fecaca`,
+            borderRadius: tokens.radiusMd, padding: '8px 12px',
+            fontSize: 12, color: '#dc2626', marginBottom: 12,
+            display: 'flex', justifyContent: 'space-between', gap: 8,
+          }}>
+            <span>⚠ {redeemError}</span>
+            <button
+              onClick={() => setRedeemError(null)}
+              style={{ border: 'none', background: 'transparent', color: '#dc2626', cursor: 'pointer', fontSize: 14 }}
+            >×</button>
+          </div>
+        )}
+
+        {/* Free product banner (only when filter shows it) */}
+        {(filter === 'all' || filter === 'free') && counts.free > 0 && (
+          <div style={{
+            background: tokens.warningSoft, border: `1px solid #fde68a`,
+            borderRadius: tokens.radiusMd, padding: '10px 14px',
+            fontSize: 12, color: tokens.warningText, marginBottom: 12,
+          }}>
+            🛒 Marketplace items get added to your cart at ₹0 via Shopify
+          </div>
+        )}
+
+        {/* Reward list */}
+        {filteredItems.length === 0 ? (
+          <div style={{
+            textAlign: 'center', padding: '40px 0',
+            border: `1px dashed ${tokens.border}`, borderRadius: tokens.radiusMd,
+          }}>
+            <div style={{ fontSize: 28, marginBottom: 10 }}>🎁</div>
+            <div style={{ fontSize: 14, fontWeight: 600, color: tokens.text, marginBottom: 6 }}>
+              No rewards in this category
+            </div>
+            <div style={{ fontSize: 12, color: tokens.textMuted }}>
+              {filter === 'all'
+                ? 'Keep earning — rewards will appear here soon.'
+                : 'Try a different filter.'}
+            </div>
+          </div>
+        ) : filteredItems.map(item => (
+          <RewardRow
+            key={`${item._type}_${item.id}`}
             item={item}
             config={config}
             balance={customer.pointsBalance || 0}
-            ctaLabel={redeeming ? '…' : 'Redeem'}
-            accentColor={config.accentColor}
+            redeeming={redeeming}
             onAction={() => handleRedeem(item)}
-            existingCode={existingCodes[item.id] || null}
+            existingCode={
+              optimisticClaimed[item.rewardId] || optimisticClaimed[item.id] ||
+              (item._type === 'partner'
+                ? (existingBrandCodes[item.rewardId] || existingBrandCodes[item.id] || existingCodes[item.rewardId] || existingCodes[item.id] || null)
+                : (existingCodes[item.id] || null))
+            }
           />
         ))}
-
-        {subTab === 'partners' && (
-          <>
-            {partnerItems.length === 0 ? (
-              <div style={{ textAlign: 'center', color: '#9ca3af', fontSize: 13, paddingTop: 40 }}>
-                <div style={{ fontSize: 28, marginBottom: 10 }}>🤝</div>
-                <div style={{ fontWeight: 600, color: '#374151', marginBottom: 6 }}>No partner offers right now</div>
-                <div style={{ fontSize: 11, lineHeight: 1.5 }}>Check back soon for exclusive partner rewards.</div>
-              </div>
-            ) : partnerItems.map(item => (
-              <RedeemCard
-                key={item.id}
-                item={item}
-                config={config}
-                balance={customer.pointsBalance || 0}
-                ctaLabel="Claim"
-                accentColor="#10b981"
-                onAction={() => handleRedeem(item)}
-                existingCode={existingBrandCodes[item.rewardId] || existingBrandCodes[item.id] || existingCodes[item.rewardId] || existingCodes[item.id] || null}
-              />
-            ))}
-          </>
-        )}
-
-        {subTab === 'free' && (
-          <>
-            <div
-              style={{
-                background: '#fffbeb',
-                border: '1px solid #fde68a',
-                borderRadius: 10,
-                padding: '10px 14px',
-                fontSize: 12,
-                color: '#92400e',
-                marginBottom: 14,
-              }}
-            >
-              🛒 Redeem points → added to cart at ₹0 via Shopify Functions
-            </div>
-            {freeItems.map(item => (
-              <RedeemCard
-                key={item.id}
-                item={item}
-                config={config}
-                balance={customer.pointsBalance || 0}
-                ctaLabel="Add Free"
-                accentColor="#16a34a"
-                onAction={() => handleRedeem(item)}
-                existingCode={existingCodes[item.id] || null}
-              />
-            ))}
-          </>
-        )}
       </div>
 
-      {/* Voucher modal */}
       {voucherItem && (
         <VoucherModal
           item={voucherItem}
@@ -296,19 +302,24 @@ const MemberRedeem = React.memo(function MemberRedeem({ data, config }) {
   );
 });
 
-function RedeemCard({ item, config, balance, ctaLabel, accentColor, onAction, existingCode }) {
+function RewardRow({ item, config, balance, redeeming, onAction, existingCode }) {
   const canAfford = balance >= item.pointsCost;
   const isClaimed = !!existingCode;
   const [copied, setCopied] = useState(false);
-  const [hovered, setHovered] = useState(false);
+  const meta = TYPE_META[item._type] || TYPE_META.store;
+  const typeColor = meta.textColorGetter(config.accentColor);
+  const typeBg    = meta.bgGetter(config.accentColor);
 
   const handleCopy = useCallback(() => {
-    if (!existingCode?.code) return;
-    const code = existingCode.code;
-    if (navigator.clipboard) {
-      navigator.clipboard.writeText(code).catch(() => fallbackCopy(code));
-    } else {
-      fallbackCopy(code);
+    const code = existingCode?.code;
+    if (!code) return;
+    if (navigator.clipboard) navigator.clipboard.writeText(code).catch(() => {});
+    else {
+      const el = document.createElement('textarea');
+      el.value = code; el.style.cssText = 'position:fixed;opacity:0';
+      document.body.appendChild(el); el.select();
+      try { document.execCommand('copy'); } catch {}
+      document.body.removeChild(el);
     }
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
@@ -317,123 +328,91 @@ function RedeemCard({ item, config, balance, ctaLabel, accentColor, onAction, ex
   const needMore = !isClaimed && !canAfford ? item.pointsCost - balance : 0;
 
   return (
-    <div
-      style={{
-        position: 'relative',
-        display: 'flex',
-        alignItems: 'center',
-        gap: 12,
-        padding: '12px 14px',
-        border: '1px solid #f3f4f6',
-        borderRadius: 12,
-        background: isClaimed ? '#fafffe' : '#fff',
-        marginBottom: 10,
-        opacity: !isClaimed && !canAfford ? 0.65 : 1,
-      }}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-    >
-      {needMore > 0 && hovered && (
-        <div style={{
-          position: 'absolute',
-          top: -34,
-          left: '50%',
-          transform: 'translateX(-50%)',
-          background: '#1f2937',
-          color: '#fff',
-          fontSize: 11,
-          fontWeight: 600,
-          padding: '5px 10px',
-          borderRadius: 6,
-          whiteSpace: 'nowrap',
-          pointerEvents: 'none',
-          zIndex: 10,
-          boxShadow: '0 2px 8px rgba(0,0,0,0.18)',
-        }}>
-          Need {Number(needMore).toLocaleString('en-IN')} more {config.pointsAbbrev}
-          <div style={{
-            position: 'absolute',
-            bottom: -5,
-            left: '50%',
-            transform: 'translateX(-50%)',
-            width: 0, height: 0,
-            borderLeft: '5px solid transparent',
-            borderRight: '5px solid transparent',
-            borderTop: '5px solid #1f2937',
-          }} />
-        </div>
-      )}
+    <div style={{
+      display: 'flex', gap: 12, alignItems: 'center',
+      padding: 14, marginBottom: 10,
+      border: `1px solid ${tokens.border}`, borderRadius: tokens.radiusLg,
+      background: tokens.surface,
+      opacity: !isClaimed && !canAfford ? 0.7 : 1,
+    }}>
       <div style={{
-        width: 46, height: 46, borderRadius: 10,
-        background: `${accentColor}18`,
+        width: 44, height: 44, borderRadius: 10,
+        background: typeBg,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
-        flexShrink: 0, fontWeight: 700, fontSize: 11, color: accentColor,
-        textAlign: 'center', padding: '2px',
+        fontSize: 22, flexShrink: 0,
       }}>
-        {item.discountValue}
+        {meta.icon}
       </div>
-
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontWeight: 600, fontSize: 13, color: '#111827', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        <span style={{
+          display: 'inline-block',
+          fontSize: 10, fontWeight: 700,
+          textTransform: 'uppercase', letterSpacing: 0.5,
+          color: typeColor, background: typeBg,
+          padding: '2px 8px', borderRadius: 999,
+          marginBottom: 4,
+        }}>
+          {meta.label}
+        </span>
+        <div style={{
+          fontWeight: 600, fontSize: 14, color: tokens.text,
+          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+        }}>
           {item.title}
         </div>
         {item.brandName && (
-          <div style={{ fontSize: 11, color: '#6b7280', marginTop: 1 }}>{item.brandName}</div>
+          <div style={{ fontSize: 11, color: tokens.textMuted, marginTop: 1 }}>
+            {item.brandName}
+          </div>
         )}
-        <div style={{ fontSize: 12, color: '#6b7280', marginTop: 1 }}>
-          {Number(item.pointsCost).toLocaleString('en-IN')} {config.pointsAbbrev}
+        <div style={{ fontSize: 12, color: tokens.text, fontWeight: 600, marginTop: 4 }}>
+          {fmtPts(item.pointsCost)} {config.pointsAbbrev || 'pts'}
+          {needMore > 0 && (
+            <span style={{ color: tokens.textMuted, fontWeight: 400, marginLeft: 6 }}>
+              · need {fmtPts(needMore)} more
+            </span>
+          )}
         </div>
       </div>
-
       {isClaimed ? (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-end', flexShrink: 0, marginLeft: 'auto' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-end', flexShrink: 0 }}>
           <div style={{
-            background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 8,
-            padding: '4px 10px', fontSize: 11, fontWeight: 700, color: '#16a34a',
+            background: tokens.successSoft, border: `1px solid ${tokens.successText}33`,
+            borderRadius: tokens.radiusSm, padding: '4px 10px',
+            fontSize: 11, fontWeight: 700, color: tokens.successText,
           }}>
             ✓ Claimed
           </div>
           {existingCode.code && (
             <button onClick={handleCopy} style={{
-              background: copied ? '#16a34a' : '#f3f4f6',
-              color: copied ? '#fff' : '#374151',
-              border: 'none', borderRadius: 6,
+              background: copied ? tokens.successText : tokens.bg,
+              color: copied ? '#fff' : tokens.text,
+              border: 'none', borderRadius: tokens.radiusSm,
               padding: '3px 8px', fontSize: 10, fontWeight: 700,
               cursor: 'pointer', fontFamily: 'monospace', whiteSpace: 'nowrap',
             }}>
-              {copied ? '✓ Copied!' : existingCode.code}
+              {copied ? '✓ Copied' : existingCode.code}
             </button>
           )}
         </div>
       ) : (
         <button
           onClick={onAction}
-          disabled={!canAfford}
+          disabled={!canAfford || redeeming}
           style={{
-            background: canAfford ? accentColor : '#e5e7eb',
-            color: canAfford ? '#fff' : '#9ca3af',
-            border: 'none', borderRadius: 8, padding: '7px 14px',
-            fontSize: 12, fontWeight: 600,
+            background: canAfford ? config.accentColor : tokens.bg,
+            color: canAfford ? '#fff' : tokens.textMuted,
+            border: 'none', borderRadius: tokens.radiusMd,
+            padding: '8px 14px', fontSize: 13, fontWeight: 600,
             cursor: canAfford ? 'pointer' : 'not-allowed',
             flexShrink: 0, whiteSpace: 'nowrap',
           }}
         >
-          {ctaLabel}
+          {redeeming ? '…' : canAfford ? 'Redeem' : 'Locked'}
         </button>
       )}
     </div>
   );
-}
-
-function fallbackCopy(text) {
-  const el = document.createElement('textarea');
-  el.value = text;
-  el.style.position = 'fixed';
-  el.style.opacity = '0';
-  document.body.appendChild(el);
-  el.select();
-  document.execCommand('copy');
-  document.body.removeChild(el);
 }
 
 export default MemberRedeem;

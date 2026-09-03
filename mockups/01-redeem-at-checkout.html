@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GoSelf — Redeem Points at Checkout (Mockup)</title>
+<style>
+  :root{ --brand:#6d5ef6; --brand2:#8b7cf8; --ink:#1f2430; --muted:#6b7280; --line:#e6e8ee; --bg:#f5f6fa; --ok:#16a34a; }
+  *{box-sizing:border-box} body{margin:0;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;background:var(--bg);color:var(--ink)}
+  .wrap{max-width:1080px;margin:0 auto;padding:28px 20px;display:grid;grid-template-columns:1fr 380px;gap:32px}
+  @media(max-width:880px){.wrap{grid-template-columns:1fr}}
+  h1{font-size:15px;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);margin:0 0 14px}
+  .field{background:#fff;border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-bottom:12px}
+  .field label{font-size:12px;color:var(--muted)} .field .v{font-size:14px;margin-top:4px}
+  /* loyalty block */
+  .loyal{background:#fff;border:1px solid var(--line);border-radius:16px;overflow:hidden;margin-bottom:14px;box-shadow:0 2px 10px rgba(20,20,60,.05)}
+  .loyal .hd{background:linear-gradient(135deg,var(--brand),var(--brand2));color:#fff;padding:14px 18px;display:flex;align-items:center;gap:10px}
+  .loyal .hd .ic{width:30px;height:30px;border-radius:8px;background:rgba(255,255,255,.2);display:grid;place-items:center;font-size:16px}
+  .loyal .hd b{font-size:15px} .loyal .hd .bal{margin-left:auto;font-size:13px;opacity:.95}
+  .loyal .bd{padding:18px}
+  .slabel{display:flex;justify-content:space-between;font-size:13px;color:var(--muted);margin-bottom:8px}
+  .slabel b{color:var(--ink)}
+  input[type=range]{width:100%;accent-color:var(--brand);height:6px}
+  .ticks{display:flex;justify-content:space-between;font-size:11px;color:#9aa0ad;margin-top:4px}
+  .calc{display:flex;align-items:center;justify-content:space-between;background:#f3f1fe;border:1px dashed #c9c0fb;border-radius:12px;padding:12px 14px;margin:14px 0}
+  .calc .pts{font-size:13px;color:var(--muted)} .calc .off{font-size:22px;font-weight:800;color:var(--brand)}
+  .btn{display:block;width:100%;border:0;border-radius:12px;padding:13px;font-size:15px;font-weight:700;cursor:pointer;background:var(--brand);color:#fff}
+  .btn.ghost{background:#fff;color:var(--brand);border:1.5px solid var(--brand)}
+  .note{font-size:11px;color:#9aa0ad;text-align:center;margin-top:10px}
+  /* applied state */
+  .applied{display:flex;align-items:center;gap:10px;background:#ecfdf3;border:1px solid #bbf7d0;border-radius:12px;padding:12px 14px;color:#15803d;font-size:13px;font-weight:600}
+  .applied .x{margin-left:auto;color:#15803d;cursor:pointer;font-weight:700;background:none;border:0}
+  /* summary */
+  .sum{background:#fff;border:1px solid var(--line);border-radius:16px;padding:18px}
+  .sum h2{font-size:16px;margin:0 0 14px}
+  .row{display:flex;justify-content:space-between;font-size:14px;margin:9px 0;color:#374151}
+  .row.disc{color:var(--ok);font-weight:600}
+  .row.total{border-top:1px solid var(--line);margin-top:12px;padding-top:12px;font-size:18px;font-weight:800}
+  .prod{display:flex;gap:12px;align-items:center;margin-bottom:14px}
+  .prod .img{width:54px;height:54px;border-radius:10px;background:linear-gradient(135deg,#dfe3ee,#c7cde0)}
+  .tag{display:inline-block;background:#eef0f6;border-radius:6px;font-size:11px;color:var(--muted);padding:2px 7px;margin-left:6px}
+  .powered{font-size:11px;color:#aab0bd;text-align:center;margin-top:8px}
+  .badge{font-size:10px;background:#fff3cd;color:#92632e;border-radius:6px;padding:2px 8px;font-weight:700}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <!-- LEFT: checkout form context -->
+  <div>
+    <h1>Checkout · Houme Rewards</h1>
+    <div class="field"><label>Contact</label><div class="v">shubham.ss122+222@gmail.com</div></div>
+    <div class="field"><label>Ship to</label><div class="v">Shubham Sarawagi · Bangalore, KA 560068</div></div>
+
+    <!-- THE NEW WIDGET (state A: choose) -->
+    <div class="loyal" id="cardA">
+      <div class="hd"><span class="ic">🎁</span><b>Houme Rewards</b><span class="bal">Balance: 27,141 Points</span></div>
+      <div class="bd">
+        <div class="slabel"><span>Redeem your points for an instant discount</span><b id="ptsSel">5,000 pts</b></div>
+        <input type="range" min="0" max="10000" step="500" value="5000" oninput="upd(this.value)">
+        <div class="ticks"><span>0</span><span>Max redeemable: 10,000</span></div>
+        <div class="calc"><span class="pts">Applying <b id="ptsApply">5,000</b> points</span><span class="off" id="offAmt">₹500 off</span></div>
+        <button class="btn" onclick="apply()">Apply points →</button>
+        <div class="note">100 points = ₹10 · Max 40% of order · Points refunded if you don't complete checkout</div>
+      </div>
+    </div>
+
+    <!-- state B: applied (hidden initially) -->
+    <div class="loyal" id="cardB" style="display:none">
+      <div class="hd"><span class="ic">🎁</span><b>Houme Rewards</b><span class="bal">Balance: 22,141 Points</span></div>
+      <div class="bd">
+        <div class="applied">✓ 5,000 points applied — ₹500 off this order
+          <button class="x" onclick="undo()">Remove</button></div>
+        <div class="note">5,000 points are on hold and will be finalised when your order is placed.</div>
+      </div>
+    </div>
+
+    <div class="field"><label>Payment</label><div class="v">Card ···· 1 <span class="tag">Razorpay</span></div></div>
+  </div>
+
+  <!-- RIGHT: order summary -->
+  <div class="sum">
+    <h2>Order summary</h2>
+    <div class="prod"><div class="img"></div><div><div style="font-weight:600;font-size:14px">The Collection Snowboard: Liquid</div><div style="font-size:12px;color:var(--muted)">Qty 1</div></div><div style="margin-left:auto;font-weight:700">₹1,110</div></div>
+    <div class="row"><span>Subtotal</span><span>₹1,110.00</span></div>
+    <div class="row"><span>Shipping</span><span>₹100.00</span></div>
+    <div class="row disc" id="discRow" style="display:none"><span>🎁 Loyalty points (5,000)</span><span>−₹500.00</span></div>
+    <div class="row"><span>Taxes</span><span>₹199.80</span></div>
+    <div class="row total"><span>Total</span><span id="grand">₹1,409.80</span></div>
+    <div class="powered">⚡ powered by <b>GoSelf</b> · <span class="badge">NEW</span></div>
+  </div>
+</div>
+<script>
+  function upd(v){document.getElementById('ptsSel').textContent=Number(v).toLocaleString()+' pts';
+    document.getElementById('ptsApply').textContent=Number(v).toLocaleString();
+    document.getElementById('offAmt').textContent='₹'+(v/10)+' off';}
+  function apply(){document.getElementById('cardA').style.display='none';document.getElementById('cardB').style.display='';
+    document.getElementById('discRow').style.display='flex';document.getElementById('grand').textContent='₹909.80';}
+  function undo(){document.getElementById('cardB').style.display='none';document.getElementById('cardA').style.display='';
+    document.getElementById('discRow').style.display='none';document.getElementById('grand').textContent='₹1,409.80';}
+</script>
+</body>
+</html>

@@ -38,3 +38,44 @@ key = "button_text"
 type = "single_line_text_field"
 name = "Button Label"
 description = "Text on the Claim button. Default: Claim Now"
+
+[[extensions.settings.fields]]
+key = "template"
+type = "single_line_text_field"
+name = "Layout Template"
+description = "inline = icon + text + button in a row (default) · banner = coloured card with full-width button · minimal = plain stacked text + button"
+
+[[extensions.settings.fields.validations]]
+name = "choices"
+value = '["inline", "banner", "minimal"]'
+
+[[extensions.settings.fields]]
+key = "banner_tone"
+type = "single_line_text_field"
+name = "Banner Colour"
+description = "Colour of the card (used when template is banner). Ignored for inline and minimal."
+
+[[extensions.settings.fields.validations]]
+name = "choices"
+value = '["success", "info", "warning"]'
+
+[[extensions.settings.fields]]
+key = "button_style"
+type = "single_line_text_field"
+name = "Button Style"
+description = "primary = filled (theme colour, default) · secondary = outlined · plain = text link"
+
+[[extensions.settings.fields.validations]]
+name = "choices"
+value = '["primary", "secondary", "plain"]'
+
+[[extensions.settings.fields]]
+key = "text_alignment"
+type = "single_line_text_field"
+name = "Text Alignment"
+description = "Alignment of all content within the block"
+
+[[extensions.settings.fields.validations]]
+name = "choices"
+value = '["start", "center", "end"]'
+

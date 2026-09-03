@@ -1,21 +1,20 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Client-Info, Apikey',
-};
-
-function json(body: unknown, status = 200) {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-  });
-}
+import { verifyWidgetToken } from '../_shared/widget-auth.ts';
+import { getCorsHeaders } from '../_shared/cors.ts';
 
 Deno.serve(async (req: Request) => {
+  const corsHeaders = { ...getCorsHeaders(req.headers.get('origin')), 'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Client-Info, Apikey, X-Widget-Token' };
+
+  function json(body: unknown, status = 200) {
+    return new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+  }
+
   if (req.method === 'OPTIONS') return new Response(null, { status: 200, headers: corsHeaders });
   if (req.method !== 'POST') return json({ error: 'POST required' }, 405);
+
+  // C-01: Verify widget token
+  const claims = await verifyWidgetToken(req);
+  if (!claims) return json({ error: 'Unauthorized — valid X-Widget-Token required' }, 401);
 
   try {
     const supabase = createClient(
@@ -24,23 +23,15 @@ Deno.serve(async (req: Request) => {
     );
 
     const body = await req.json();
-    const {
-      email,
-      shop_domain,
-      survey_id,
-      answers,
-    } = body as {
-      email?: string;
+    const { shop_domain, survey_id, answers } = body as {
       shop_domain?: string;
       survey_id?: string | null;
       answers?: Record<string, unknown>;
     };
 
-    if (!email || !shop_domain) {
-      return json({ error: 'email and shop_domain are required' }, 400);
-    }
+    if (!shop_domain) return json({ error: 'shop_domain is required' }, 400);
 
-    const normalizedEmail = email.trim().toLowerCase();
+    const memberUserId = claims.mid; // from verified token
 
     // ── Resolve client_id ────────────────────────────────────────────────────
     let clientId: string | null = null;
@@ -66,29 +57,7 @@ Deno.serve(async (req: Request) => {
       return json({ error: 'Shop not found or not integrated', shop_domain }, 404);
     }
 
-    // ── Resolve member ───────────────────────────────────────────────────────
-    let { data: member } = await supabase
-      .from('member_users')
-      .select('id')
-      .eq('email', normalizedEmail)
-      .eq('client_id', clientId)
-      .maybeSingle();
-
-    if (!member) {
-      const { data: fallback } = await supabase
-        .from('member_users')
-        .select('id')
-        .eq('email', normalizedEmail)
-        .limit(1)
-        .maybeSingle();
-      member = fallback;
-    }
-
-    if (!member) {
-      return json({ error: 'Member not found' }, 404);
-    }
-
-    const memberUserId = member.id;
+    // Identity is from the verified token — no DB lookup needed
 
     // ── Get active loyalty program ───────────────────────────────────────────
     const { data: loyaltyProgram } = await supabase

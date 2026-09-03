@@ -1,0 +1,102 @@
+{{ 'loyalty-page.css' | asset_url | stylesheet_tag }}
+<div class="rh-lp"
+style="--rh-accent: {{ block.settings.accent_color | default: '#6d5ef6' }};"
+data-rh-shop="{{ shop.permanent_domain }}"
+data-rh-email="{{ customer.email | escape }}"
+data-rh-currency="{{ block.settings.currency_symbol | default: '₹' | escape }}">
+<!-- HERO -->
+<section class="rh-lp-hero">
+<h1 class="rh-lp-title">{{ block.settings.heading | default: 'Rewards' }}</h1>
+<p class="rh-lp-sub">{{ block.settings.subheading | default: 'Earn points on everything you do. Redeem for discounts, free products & perks.' }}</p>
+<div class="rh-lp-herocard" style="display:none">
+<div><span>Your balance</span><b class="rh-lp-bal">—</b></div>
+<div><span>Your tier</span><b class="rh-lp-tierv">—</b></div>
+<div class="rh-lp-next-wrap"><span>To next tier</span><b class="rh-lp-next">—</b></div>
+</div>
+{% if block.settings.show_cta %}
+<a class="rh-lp-cta rh-lp-cta-join" href="{{ block.settings.cta_link | default: '/account/register' }}">{{ block.settings.cta_text | default: 'Join free & start earning →' }}</a>
+{% endif %}
+</section>
+<!-- WAYS TO EARN -->
+<section class="rh-lp-sec">
+<h2>{{ block.settings.earn_heading | default: 'Ways to earn' }}</h2>
+<p class="rh-lp-secsub">{{ block.settings.earn_sub | default: 'Rack up points across your journey' }}</p>
+<div class="rh-lp-grid rh-lp-earn"><div class="rh-lp-skel"></div><div class="rh-lp-skel"></div><div class="rh-lp-skel"></div></div>
+</section>
+<!-- WAYS TO REDEEM -->
+<section class="rh-lp-sec rh-lp-secalt">
+<h2>{{ block.settings.redeem_heading | default: 'Ways to redeem' }}</h2>
+<p class="rh-lp-secsub">{{ block.settings.redeem_sub | default: 'Turn points into rewards' }}</p>
+<div class="rh-lp-redeem"></div>
+</section>
+<!-- TIERS -->
+{% if block.settings.show_tiers %}
+<section class="rh-lp-sec">
+<h2>{{ block.settings.tiers_heading | default: 'Tiers & perks' }}</h2>
+<p class="rh-lp-secsub">{{ block.settings.tiers_sub | default: 'The more you shop, the more you unlock' }}</p>
+<div class="rh-lp-tiers"></div>
+</section>
+{% endif %}
+<!-- REFERRAL -->
+{% if block.settings.show_referral %}
+<section class="rh-lp-sec">
+<div class="rh-lp-refer">
+<h2>{{ block.settings.referral_heading | default: 'Refer friends, earn rewards' }}</h2>
+<p>{{ block.settings.referral_sub | default: 'Share your link — your friend gets a welcome reward, you earn points when they buy.' }}</p>
+<a class="rh-lp-cta rh-lp-cta-solid" href="{{ block.settings.referral_link | default: '/account' }}">{{ block.settings.referral_cta | default: 'Get my referral link' }}</a>
+</div>
+</section>
+{% endif %}
+<!-- FAQ -->
+{% if block.settings.show_faq %}
+<section class="rh-lp-sec rh-lp-faq">
+<h2>FAQ</h2>
+{% if block.settings.faq1_q != blank %}<div class="rh-lp-qa"><b>{{ block.settings.faq1_q }}</b><span>{{ block.settings.faq1_a }}</span></div>{% endif %}
+{% if block.settings.faq2_q != blank %}<div class="rh-lp-qa"><b>{{ block.settings.faq2_q }}</b><span>{{ block.settings.faq2_a }}</span></div>{% endif %}
+{% if block.settings.faq3_q != blank %}<div class="rh-lp-qa"><b>{{ block.settings.faq3_q }}</b><span>{{ block.settings.faq3_a }}</span></div>{% endif %}
+</section>
+{% endif %}
+{% if block.settings.show_powered %}<div class="rh-lp-powered">⚡ powered by GoSelf</div>{% endif %}
+</div>
+<script src="{{ 'loyalty-page.js' | asset_url }}" defer></script>
+{% schema %}
+{
+"name": "Loyalty Landing Page",
+"target": "section",
+"settings": [
+{ "type": "header", "content": "Hero" },
+{ "type": "text", "id": "heading", "label": "Heading", "default": "Rewards" },
+{ "type": "textarea", "id": "subheading", "label": "Subheading", "default": "Earn points on everything you do. Redeem for discounts, free products & perks." },
+{ "type": "color", "id": "accent_color", "label": "Accent color", "default": "#6d5ef6" },
+{ "type": "text", "id": "currency_symbol", "label": "Currency symbol", "default": "₹" },
+{ "type": "checkbox", "id": "show_cta", "label": "Show join button", "default": true },
+{ "type": "text", "id": "cta_text", "label": "Join button text", "default": "Join free & start earning →" },
+{ "type": "url", "id": "cta_link", "label": "Join button link" },
+{ "type": "header", "content": "Ways to earn" },
+{ "type": "text", "id": "earn_heading", "label": "Heading", "default": "Ways to earn" },
+{ "type": "text", "id": "earn_sub", "label": "Subheading", "default": "Rack up points across your journey" },
+{ "type": "header", "content": "Ways to redeem" },
+{ "type": "text", "id": "redeem_heading", "label": "Heading", "default": "Ways to redeem" },
+{ "type": "text", "id": "redeem_sub", "label": "Subheading", "default": "Turn points into rewards" },
+{ "type": "header", "content": "Tiers" },
+{ "type": "checkbox", "id": "show_tiers", "label": "Show tiers", "default": true },
+{ "type": "text", "id": "tiers_heading", "label": "Heading", "default": "Tiers & perks" },
+{ "type": "text", "id": "tiers_sub", "label": "Subheading", "default": "The more you shop, the more you unlock" },
+{ "type": "header", "content": "Referral" },
+{ "type": "checkbox", "id": "show_referral", "label": "Show referral CTA", "default": true },
+{ "type": "text", "id": "referral_heading", "label": "Heading", "default": "Refer friends, earn rewards" },
+{ "type": "textarea", "id": "referral_sub", "label": "Subheading", "default": "Share your link — your friend gets a welcome reward, you earn points when they buy." },
+{ "type": "text", "id": "referral_cta", "label": "Button text", "default": "Get my referral link" },
+{ "type": "url", "id": "referral_link", "label": "Button link" },
+{ "type": "header", "content": "FAQ & footer" },
+{ "type": "checkbox", "id": "show_faq", "label": "Show FAQ", "default": true },
+{ "type": "text", "id": "faq1_q", "label": "Q1", "default": "How do I earn points?" },
+{ "type": "textarea", "id": "faq1_a", "label": "A1", "default": "Sign up free, then earn on orders, reviews, referrals, your birthday and more." },
+{ "type": "text", "id": "faq2_q", "label": "Q2", "default": "How do I redeem?" },
+{ "type": "textarea", "id": "faq2_a", "label": "A2", "default": "Open the Rewards widget or redeem your points at checkout for an instant discount." },
+{ "type": "text", "id": "faq3_q", "label": "Q3", "default": "Do points expire?" },
+{ "type": "textarea", "id": "faq3_a", "label": "A3", "default": "Points stay active as long as you shop at least once every 12 months." },
+{ "type": "checkbox", "id": "show_powered", "label": "Show 'powered by GoSelf'", "default": true }
+]
+}
+{% endschema %}

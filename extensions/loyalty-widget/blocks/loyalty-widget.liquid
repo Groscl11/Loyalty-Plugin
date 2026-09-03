@@ -1,73 +1,63 @@
-{% comment %}
-  GoSelf Loyalty Widget V6
-  All UI is rendered by React (assets/loyalty-widget-v6.js).
-  Settings are passed via window.__GOSELF_SETTINGS__.
-  Customer email is exposed via window.__goself_customer_email.
-{% endcomment %}
-
 <script>
-  window.__GOSELF_SETTINGS__ = {{ block.settings | json }};
-  {%- if customer -%}
-  window.__goself_customer_email = {{ customer.email | json }};
-  {%- endif -%}
+window.__GOSELF_SETTINGS__ = {{ block.settings | json }};
+{%- if customer -%}
+window.__goself_customer_email = {{ customer.email | json }};
+{%- endif -%}
 </script>
-
 <div id="goself-loyalty-root" data-block-id="{{ block.id }}"></div>
-
 <script src="{{ 'loyalty-widget-v6.js' | asset_url }}" defer></script>
-
 {% schema %}
 {
-  "name": "Loyalty Rewards Widget",
-  "target": "section",
-  "settings": [
-    { "type": "header", "content": "Branding" },
-    { "type": "color",  "id": "accent_color_v6", "label": "Accent colour", "default": "#6366f1" },
-    { "type": "color",  "id": "hero_banner_bg",  "label": "Guest hero banner background", "default": "#111111" },
-    { "type": "select", "id": "hero_text_color", "label": "Guest hero text colour", "default": "#ffffff",
-      "options": [{ "label": "White", "value": "#ffffff" }, { "label": "Black", "value": "#000000" }] },
-    { "type": "select", "id": "font_family", "label": "Widget font family", "default": "inherit",
-      "options": [
-        { "label": "Inherit from theme", "value": "inherit" },
-        { "label": "System UI", "value": "system-ui, sans-serif" },
-        { "label": "Georgia (serif)", "value": "Georgia, serif" },
-        { "label": "Courier (monospace)", "value": "'Courier New', monospace" }
-      ] },
-    { "type": "header", "content": "Pill Button" },
-    { "type": "select",   "id": "widget_position",       "label": "Button position", "default": "left",
-      "options": [{ "label": "Bottom Left", "value": "left" }, { "label": "Bottom Right", "value": "right" }] },
-    { "type": "text",     "id": "widget_label",          "label": "Button label", "default": "Rewards" },
-    { "type": "checkbox", "id": "show_points_on_button", "label": "Show points on button", "default": true },
-    { "type": "checkbox", "id": "shake_on_load",         "label": "Shake button on load", "default": true },
-    { "type": "range",    "id": "shake_interval_sec",    "label": "Shake interval (seconds)", "default": 10, "min": 5, "max": 120, "step": 5 },
-    { "type": "header", "content": "Messaging" },
-    { "type": "text", "id": "points_noun",        "label": "Points noun",              "default": "Points" },
-    { "type": "text", "id": "points_abbrev",      "label": "Points abbreviation",      "default": "pts" },
-    { "type": "text", "id": "reward_noun",        "label": "Reward noun",              "default": "Reward" },
-    { "type": "text", "id": "tier_bronze_name",   "label": "Bronze tier name",         "default": "Bronze" },
-    { "type": "text", "id": "tier_silver_name",   "label": "Silver tier name",         "default": "Silver" },
-    { "type": "text", "id": "tier_gold_name",     "label": "Gold tier name",           "default": "Gold" },
-    { "type": "text", "id": "tier_platinum_name", "label": "Platinum tier name",       "default": "Platinum" },
-    { "type": "text", "id": "welcome_message",    "label": "Welcome message ({firstName})", "default": "Hi {firstName}!" },
-    { "type": "text", "id": "guest_headline",     "label": "Guest panel headline",     "default": "Earn rewards on every purchase" },
-    { "type": "text", "id": "guest_subline",      "label": "Guest panel subline",      "default": "Points · Partner offers · Milestone gifts" },
-    { "type": "header", "content": "Features" },
-    { "type": "checkbox", "id": "show_refer_tab",       "label": "Show Refer tab",          "default": true },
-    { "type": "checkbox", "id": "show_leaderboard",     "label": "Show Leaderboard",        "default": true },
-    { "type": "checkbox", "id": "show_survey",          "label": "Show Survey nudge",       "default": true },
-    { "type": "checkbox", "id": "show_survey_on_home",  "label": "Show survey on home screen", "info": "When enabled, an active survey also appears as a card on the widget home screen, not just inside the Earn tab.", "default": false },
-    { "type": "checkbox", "id": "show_partner_brands",  "label": "Show Partner Brands tab", "default": true },
-    { "type": "checkbox", "id": "enable_free_products", "label": "Enable Free Products tab","default": true },
-    { "type": "checkbox", "id": "show_milestones",      "label": "Show Milestones tab",     "default": true },
-    { "type": "header", "content": "Leaderboard Prizes" },
-    { "type": "text", "id": "prize_1st", "label": "1st place prize", "default": "Rs.500 voucher + 1000 pts" },
-    { "type": "text", "id": "prize_2nd", "label": "2nd place prize", "default": "Rs.200 voucher + 500 pts" },
-    { "type": "text", "id": "prize_3rd", "label": "3rd place prize", "default": "Rs.100 voucher + 200 pts" },
-    { "type": "header", "content": "Legacy" },
-    { "type": "color",    "id": "primary_color",       "label": "Primary colour (legacy)", "default": "#3B82F6" },
-    { "type": "checkbox", "id": "show_floating_button","label": "Show button (legacy)",     "default": true },
-    { "type": "text",     "id": "points_name",         "label": "Points name (legacy)",     "default": "Rewards Points" },
-    { "type": "checkbox", "id": "auto_redeem",         "label": "Auto-redeem (legacy)",     "default": false }
-  ]
+"name": "Loyalty Rewards Widget",
+"target": "section",
+"settings": [
+{ "type": "header", "content": "Branding" },
+{ "type": "color",  "id": "accent_color_v6", "label": "Accent colour", "default": "#6366f1" },
+{ "type": "color",  "id": "hero_banner_bg",  "label": "Guest hero banner background", "default": "#111111" },
+{ "type": "select", "id": "hero_text_color", "label": "Guest hero text colour", "default": "#ffffff",
+"options": [{ "label": "White", "value": "#ffffff" }, { "label": "Black", "value": "#000000" }] },
+{ "type": "select", "id": "font_family", "label": "Widget font family", "default": "inherit",
+"options": [
+{ "label": "Inherit from theme", "value": "inherit" },
+{ "label": "System UI", "value": "system-ui, sans-serif" },
+{ "label": "Georgia (serif)", "value": "Georgia, serif" },
+{ "label": "Courier (monospace)", "value": "'Courier New', monospace" }
+] },
+{ "type": "header", "content": "Pill Button" },
+{ "type": "select",   "id": "widget_position",       "label": "Button position", "default": "left",
+"options": [{ "label": "Bottom Left", "value": "left" }, { "label": "Bottom Right", "value": "right" }] },
+{ "type": "text",     "id": "widget_label",          "label": "Button label", "default": "Rewards" },
+{ "type": "checkbox", "id": "show_points_on_button", "label": "Show points on button", "default": true },
+{ "type": "checkbox", "id": "shake_on_load",         "label": "Shake button on load", "default": true },
+{ "type": "range",    "id": "shake_interval_sec",    "label": "Shake interval (seconds)", "default": 10, "min": 5, "max": 120, "step": 5 },
+{ "type": "header", "content": "Messaging" },
+{ "type": "text", "id": "points_noun",        "label": "Points noun",              "default": "Points" },
+{ "type": "text", "id": "points_abbrev",      "label": "Points abbreviation",      "default": "pts" },
+{ "type": "text", "id": "reward_noun",        "label": "Reward noun",              "default": "Reward" },
+{ "type": "text", "id": "tier_bronze_name",   "label": "Bronze tier name",         "default": "Bronze" },
+{ "type": "text", "id": "tier_silver_name",   "label": "Silver tier name",         "default": "Silver" },
+{ "type": "text", "id": "tier_gold_name",     "label": "Gold tier name",           "default": "Gold" },
+{ "type": "text", "id": "tier_platinum_name", "label": "Platinum tier name",       "default": "Platinum" },
+{ "type": "text", "id": "welcome_message",    "label": "Welcome message ({firstName})", "default": "Hi {firstName}!" },
+{ "type": "text", "id": "guest_headline",     "label": "Guest panel headline",     "default": "Earn rewards on every purchase" },
+{ "type": "text", "id": "guest_subline",      "label": "Guest panel subline",      "default": "Points · Partner offers · Milestone gifts" },
+{ "type": "header", "content": "Features" },
+{ "type": "checkbox", "id": "show_refer_tab",       "label": "Show Refer tab",          "default": true },
+{ "type": "checkbox", "id": "show_leaderboard",     "label": "Show Leaderboard",        "default": true },
+{ "type": "checkbox", "id": "show_survey",          "label": "Show Survey nudge",       "default": true },
+{ "type": "checkbox", "id": "show_survey_on_home",  "label": "Show survey on home screen", "info": "When enabled, an active survey also appears as a card on the widget home screen, not just inside the Earn tab.", "default": false },
+{ "type": "checkbox", "id": "show_partner_brands",  "label": "Show Partner Brands tab", "default": true },
+{ "type": "checkbox", "id": "enable_free_products", "label": "Enable Free Products tab","default": true },
+{ "type": "checkbox", "id": "show_milestones",      "label": "Show Milestones tab",     "default": true },
+{ "type": "header", "content": "Leaderboard Prizes" },
+{ "type": "text", "id": "prize_1st", "label": "1st place prize", "default": "Rs.500 voucher + 1000 pts" },
+{ "type": "text", "id": "prize_2nd", "label": "2nd place prize", "default": "Rs.200 voucher + 500 pts" },
+{ "type": "text", "id": "prize_3rd", "label": "3rd place prize", "default": "Rs.100 voucher + 200 pts" },
+{ "type": "header", "content": "Legacy" },
+{ "type": "color",    "id": "primary_color",       "label": "Primary colour (legacy)", "default": "#3B82F6" },
+{ "type": "checkbox", "id": "show_floating_button","label": "Show button (legacy)",     "default": true },
+{ "type": "text",     "id": "points_name",         "label": "Points name (legacy)",     "default": "Rewards Points" },
+{ "type": "checkbox", "id": "auto_redeem",         "label": "Auto-redeem (legacy)",     "default": false }
+]
 }
 {% endschema %}

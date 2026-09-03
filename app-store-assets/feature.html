@@ -1,0 +1,57 @@
+<link rel="stylesheet" href="_shared.css">
+<style>
+  html,body{width:1600px;height:900px}
+  .stage{width:1600px;height:900px;background:linear-gradient(130deg,#4338ca 0%,#6366f1 55%,#818cf8 100%);
+    position:relative;overflow:hidden;display:flex;align-items:center;padding:0 90px}
+  .blob{position:absolute;border-radius:50%;filter:blur(10px);opacity:.5}
+  .b1{width:520px;height:520px;background:radial-gradient(circle,rgba(255,255,255,.22),transparent 70%);top:-120px;left:-100px}
+  .b2{width:600px;height:600px;background:radial-gradient(circle,rgba(245,158,11,.28),transparent 70%);bottom:-200px;right:280px}
+  .left{color:#fff;max-width:720px;z-index:2}
+  .left .badge{display:inline-flex;align-items:center;gap:9px;background:rgba(255,255,255,.15);
+    border:1px solid rgba(255,255,255,.25);padding:9px 18px;border-radius:999px;font-weight:700;font-size:16px}
+  .left .badge .m{width:26px;height:26px;border-radius:7px;background:linear-gradient(150deg,#fde68a,#f59e0b);
+    display:flex;align-items:center;justify-content:center;color:#78350f;font-weight:800;font-size:16px}
+  .left h1{font-size:70px;line-height:1.04;font-weight:800;letter-spacing:-1.5px;margin-top:28px}
+  .left h1 .g{color:#fde68a}
+  .left p{font-size:24px;line-height:1.5;color:rgba(255,255,255,.9);margin-top:26px;max-width:600px}
+  .bul{margin-top:34px;display:flex;flex-direction:column;gap:16px}
+  .bul .row{display:flex;align-items:center;gap:14px;font-size:19px;font-weight:600}
+  .bul .row .t{width:30px;height:30px;border-radius:50%;background:rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:800}
+  .right{position:absolute;right:110px;top:50%;transform:translateY(-50%) rotate(-3deg);z-index:2}
+  .right .lw-panel{width:360px}
+</style>
+<div class="stage">
+  <div class="blob b1"></div><div class="blob b2"></div>
+  <div class="left">
+    <div class="badge"><span class="m">g</span> Loyalty Rewards by Goself</div>
+    <h1>Turn every order into <span class="g">loyalty</span></h1>
+    <p>A complete points-and-rewards program that turns first-time buyers into repeat customers — right inside your store.</p>
+    <div class="bul">
+      <div class="row"><span class="t">✓</span> Customers earn points automatically on every order</div>
+      <div class="row"><span class="t">✓</span> Redeem points for discount codes at checkout</div>
+      <div class="row"><span class="t">✓</span> Branded storefront widget, live in minutes</div>
+    </div>
+  </div>
+  <div class="right">
+    <div class="lw-panel">
+      <div class="lw-head">
+        <div class="row"><div class="brand">★ Rewards</div><div class="close">✕</div></div>
+        <div class="lw-tier">🏆 Gold member</div>
+        <div class="lw-balance"><span class="num">1,250</span><span class="unit">points</span></div>
+        <div class="lw-progress"><div class="track"><div class="fill" style="width:72%"></div></div><div class="lbl">250 points to your next reward</div></div>
+      </div>
+      <div class="lw-body">
+        <div class="lw-section-title">Available rewards</div>
+        <div class="lw-reward"><div class="ic">🏷️</div><div class="txt"><div class="t">₹200 off</div><div class="s">Any order</div></div><div class="cta">Redeem</div></div>
+        <div class="lw-reward"><div class="ic">🚚</div><div class="txt"><div class="t">Free shipping</div><div class="s">On your next order</div></div><div class="cost">300 pts</div></div>
+      </div>
+      <div class="lw-nav">
+        <div class="item on"><span class="ic">🏠</span>Home</div>
+        <div class="item"><span class="ic">⭐</span>Earn</div>
+        <div class="item"><span class="ic">🎁</span>Redeem</div>
+        <div class="item"><span class="ic">👥</span>Refer</div>
+      </div>
+      <div class="lw-powered">powered by GoSelf</div>
+    </div>
+  </div>
+</div>

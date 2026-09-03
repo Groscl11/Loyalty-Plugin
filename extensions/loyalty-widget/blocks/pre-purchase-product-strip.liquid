@@ -1,0 +1,90 @@
+{{ 'pre-purchase-rewards.css' | asset_url | stylesheet_tag }}
+<script src="{{ 'pre-purchase-rewards.js' | asset_url }}" defer></script>
+<div id="rh-pps-{{ block.id }}"
+class="rh-pps-wrap style-{{ block.settings.style }}"
+style="--rh-accent:{{ block.settings.accent_color }};--rh-bg:{{ block.settings.bg_color }};--rh-text:{{ block.settings.text_color }};--rh-radius:{{ block.settings.border_radius }}px;--rh-mt:{{ block.settings.margin_top }}px;--rh-mb:{{ block.settings.margin_bottom }}px;{% unless request.design_mode %}display:none{% endunless %}"
+{{ block.shopify_attributes }}>
+<div class="rh-pps-bar">
+<div class="rh-pps-left">
+<span class="rh-pps-icon">🎁</span>
+<div class="rh-pps-text">
+<span class="rh-pps-hl">{{ block.settings.headline }}</span>
+<div class="rh-pps-chips" id="rh-pps-chips-{{ block.id }}">
+{% if request.design_mode %}
+<span class="rh-ppr-chip"><span class="rh-ppr-chip-initials">B1</span><span>Partner Brand</span></span>
+<span class="rh-ppr-chip"><span class="rh-ppr-chip-initials">B2</span><span>Brand Two</span></span>
+<span class="rh-ppr-chip-more">+1 more</span>
+{% endif %}
+</div>
+</div>
+</div>
+<button class="rh-pps-cta" id="rh-pps-btn-{{ block.id }}" type="button">{{ block.settings.cta_text }}</button>
+</div>
+{% if block.settings.show_progress and block.settings.min_order_value > 0 %}
+<div id="rh-pps-pw-{{ block.id }}" class="rh-pps-prog-wrap" style="display:none">
+<div class="rh-pps-prog-track"><div class="rh-pps-prog-fill" id="rh-pps-pf-{{ block.id }}"></div></div>
+<span class="rh-pps-prog-label" id="rh-pps-pl-{{ block.id }}"></span>
+</div>
+{% endif %}
+</div>
+<div class="rh-pps-overlay" id="rh-pps-ov-{{ block.id }}" style="display:none" role="dialog" aria-modal="true">
+<div class="rh-pps-drawer">
+<div class="rh-pps-drawer-hd">
+<div>
+<p class="rh-pps-drawer-title">🎁 {{ block.settings.drawer_title }}</p>
+<p class="rh-pps-drawer-sub">{{ block.settings.drawer_subtitle }}</p>
+</div>
+<button class="rh-pps-close" id="rh-pps-close-{{ block.id }}" type="button" aria-label="Close">
+<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+</button>
+</div>
+<div class="rh-pps-grid" id="rh-pps-grid-{{ block.id }}">
+<div class="rh-ppr-loading" id="rh-pps-load-{{ block.id }}"><span class="rh-ppr-spinner"></span>Loading rewards…</div>
+</div>
+<p class="rh-ppr-disclaimer">Rewards are issued after your order is confirmed.</p>
+</div>
+</div>
+<script>
+(window._RhPPRQueue = window._RhPPRQueue || []).push(function() {
+window.RhPPR_initProductStrip({
+id: '{{ block.id }}',
+campaignId: '{{ block.settings.campaign_id }}',
+minOrder: {{ block.settings.min_order_value | default: 0 }},
+currency: '{{ shop.money_format | strip_html | slice: 0, 1 }}',
+showProgress: {{ block.settings.show_progress | json }}
+});
+});
+</script>
+{% schema %}
+{
+"name": "PPR - Product Strip",
+"target": "section",
+"settings": [
+{ "type": "header", "content": "Campaign" },
+{ "type": "text", "id": "campaign_id", "label": "Campaign ID", "info": "Find in GoSelf Admin → Campaigns." },
+{ "type": "number", "id": "min_order_value", "label": "Min order value to qualify", "info": "0 = no progress bar", "default": 0 },
+{ "type": "header", "content": "Messaging" },
+{ "type": "text", "id": "headline", "label": "Strip headline", "default": "Unlock partner rewards on this order" },
+{ "type": "text", "id": "cta_text", "label": "Button label", "default": "See Rewards" },
+{ "type": "text", "id": "drawer_title", "label": "Drawer title", "default": "Rewards Included" },
+{ "type": "text", "id": "drawer_subtitle", "label": "Drawer subtitle", "default": "Place your order and claim exclusive offers from our brand partners." },
+{ "type": "header", "content": "Style" },
+{
+"type": "select", "id": "style", "label": "Strip style",
+"options": [
+{ "value": "card",    "label": "Card — rounded box" },
+{ "value": "strip",   "label": "Strip — colour bar" },
+{ "value": "minimal", "label": "Minimal — borderline" }
+],
+"default": "card"
+},
+{ "type": "checkbox", "id": "show_progress", "label": "Show cart progress bar", "default": true },
+{ "type": "color", "id": "accent_color", "label": "Accent colour", "default": "#6366f1" },
+{ "type": "color", "id": "bg_color",     "label": "Background colour", "default": "#f5f3ff" },
+{ "type": "color", "id": "text_color",   "label": "Text colour", "default": "#1e1b4b" },
+{ "type": "range", "id": "border_radius", "label": "Corner radius (px)", "min": 0, "max": 20, "step": 2, "default": 10 },
+{ "type": "range", "id": "margin_top",    "label": "Margin top (px)",    "min": 0, "max": 40, "step": 4, "default": 12 },
+{ "type": "range", "id": "margin_bottom", "label": "Margin bottom (px)", "min": 0, "max": 40, "step": 4, "default": 12 }
+]
+}
+{% endschema %}

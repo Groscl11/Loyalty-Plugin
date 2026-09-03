@@ -1,21 +1,23 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Client-Info, Apikey',
-};
-
-function json(body: unknown, status = 200) {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-  });
-}
+import { verifyWidgetToken } from '../_shared/widget-auth.ts';
+import { getCorsHeaders } from '../_shared/cors.ts';
 
 Deno.serve(async (req: Request) => {
+  const corsHeaders = { ...getCorsHeaders(req.headers.get('origin')), 'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Client-Info, Apikey, X-Widget-Token' };
+
+  function json(body: unknown, status = 200) {
+    return new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+  }
   if (req.method === 'OPTIONS') return new Response(null, { status: 200, headers: corsHeaders });
   if (req.method !== 'POST') return json({ error: 'POST required' }, 405);
+
+  // C-01: Verify widget token — identity comes from signed token, not request body
+  const claims = await verifyWidgetToken(req);
+  if (!claims) {
+    return new Response(JSON.stringify({ error: 'Unauthorized — valid X-Widget-Token required' }), {
+      status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+  }
 
   try {
     const supabase = createClient(
@@ -24,69 +26,30 @@ Deno.serve(async (req: Request) => {
     );
 
     const body = await req.json();
-    const {
-      email,
-      shop_domain,
-      rule_id,
-    } = body as {
-      email?: string;
-      shop_domain?: string;
-      rule_id?: string;
-    };
+    const { shop_domain, rule_id } = body as { shop_domain?: string; rule_id?: string; };
 
-    if (!email || !shop_domain || !rule_id) {
-      return json({ error: 'email, shop_domain, and rule_id are required' }, 400);
+    if (!shop_domain || !rule_id) {
+      return json({ error: 'shop_domain and rule_id are required' }, 400);
     }
 
-    const normalizedEmail = email.trim().toLowerCase();
+    const memberUserId = claims.mid; // authoritative — from verified token
 
-    // ── Resolve client_id ────────────────────────────────────────────────────
-    let clientId: string | null = null;
+    // ── Identity from token (no DB lookup needed) ────────────────────────────
+    // claims.mid = member_user_id, claims.cid = client_id — both verified by HMAC
+    const clientId: string = claims.cid;
 
+    // Verify the shop belongs to the same client as the token
     const { data: si } = await supabase
       .from('store_installations')
       .select('client_id')
       .eq('shop_domain', shop_domain)
+      .eq('client_id', clientId)
       .eq('installation_status', 'active')
       .maybeSingle();
-    if (si) clientId = si.client_id;
 
-    if (!clientId) {
-      const { data: ic } = await supabase
-        .from('integration_configs')
-        .select('client_id')
-        .eq('shop_domain', shop_domain)
-        .maybeSingle();
-      if (ic) clientId = ic.client_id;
+    if (!si) {
+      return json({ error: 'Shop not found for this member' }, 404);
     }
-
-    if (!clientId) {
-      return json({ error: 'Shop not found or not integrated', shop_domain }, 404);
-    }
-
-    // ── Resolve member ───────────────────────────────────────────────────────
-    let { data: member } = await supabase
-      .from('member_users')
-      .select('id')
-      .eq('email', normalizedEmail)
-      .eq('client_id', clientId)
-      .maybeSingle();
-
-    if (!member) {
-      const { data: fallback } = await supabase
-        .from('member_users')
-        .select('id')
-        .eq('email', normalizedEmail)
-        .limit(1)
-        .maybeSingle();
-      member = fallback;
-    }
-
-    if (!member) {
-      return json({ error: 'Member not found' }, 404);
-    }
-
-    const memberUserId = member.id;
 
     // ── Lookup earning rule ──────────────────────────────────────────────────
     const { data: rule } = await supabase
@@ -105,12 +68,16 @@ Deno.serve(async (req: Request) => {
     }
 
     // ── Check if already claimed (prevent double-claiming) ────────────────────
+    // C-04 fix: .contains() requires a plain JS object for JSONB containment,
+    // NOT a pre-serialised string. Previously this guard never matched any row,
+    // allowing unlimited re-claims. Use direct column equality instead.
     const { data: existingTxn } = await supabase
       .from('loyalty_points_transactions')
       .select('id')
       .eq('member_user_id', memberUserId)
       .eq('transaction_type', 'bonus')
-      .contains('metadata', JSON.stringify({ rule_id: rule.id }))
+      .eq('reference_type', 'earning_rule')
+      .eq('reference_id', rule.id)
       .limit(1)
       .maybeSingle();
 

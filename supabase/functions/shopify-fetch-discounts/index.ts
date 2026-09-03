@@ -1,4 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
+import { decryptToken } from '../_shared/token-crypto.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -184,7 +185,7 @@ Deno.serve(async (req: Request) => {
 
     const shop             = installation.shop_domain;
     resolvedShop           = shop; // make available to catch block
-    const token            = installation.access_token;
+    const token            = await decryptToken(installation.access_token); // C-03
     const resolvedClientId = clientId || installation.client_id;
 
     // ── Get already-imported codes from our DB ────────────────────────────────

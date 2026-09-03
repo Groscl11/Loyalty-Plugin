@@ -1,0 +1,67 @@
+<link rel="stylesheet" href="_shared.css">
+<style>
+  html,body{width:1600px;height:900px}
+  .stage{width:1600px;height:900px;background:linear-gradient(120deg,#eef0fb 0%,#f7f8fa 45%,#fff 100%);
+    position:relative;overflow:hidden;padding:64px 72px}
+  .cap{max-width:640px}
+  .cap .kick{display:inline-block;background:var(--amber-100);color:var(--amber-800);font-weight:700;
+    font-size:15px;padding:8px 16px;border-radius:999px;letter-spacing:.3px}
+  .cap h1{font-size:56px;line-height:1.08;font-weight:800;margin-top:22px;letter-spacing:-1px}
+  .cap h1 .hl{color:var(--indigo)}
+  .cap p{font-size:22px;color:var(--gray-500);margin-top:22px;line-height:1.5;max-width:540px}
+  /* faux storefront card behind widget */
+  .shop{position:absolute;right:96px;top:150px;width:560px;height:640px;background:#fff;border-radius:24px;
+    box-shadow:0 40px 90px -30px rgba(17,24,39,.3);border:1px solid var(--gray-200);overflow:hidden}
+  .shop .hero{height:300px;background:linear-gradient(150deg,#c7d2fe,#a5b4fc 60%,#818cf8)}
+  .shop .pinfo{padding:26px 30px}
+  .shop .brand{font-size:13px;letter-spacing:2px;text-transform:uppercase;color:var(--gray-400);font-weight:700}
+  .shop .name{font-size:26px;font-weight:700;margin-top:8px}
+  .shop .price{font-size:22px;font-weight:700;margin-top:12px;color:var(--ink)}
+  .shop .buy{margin-top:22px;background:var(--ink);color:#fff;text-align:center;padding:16px;border-radius:12px;font-weight:700;font-size:16px}
+  /* widget floating over storefront */
+  .widget{position:absolute;right:150px;bottom:70px;z-index:5}
+</style>
+<div class="stage">
+  <div class="cap">
+    <span class="kick">★ Loyalty widget on your storefront</span>
+    <h1>Every shopper sees their <span class="hl">points &amp; rewards</span> as they browse</h1>
+    <p>A branded widget lets customers check their balance, tier, and available rewards without ever leaving your store.</p>
+  </div>
+
+  <div class="shop">
+    <div class="hero"></div>
+    <div class="pinfo">
+      <div class="brand">Aurelia Skincare</div>
+      <div class="name">Vitamin C Glow Serum</div>
+      <div class="price">₹1,290</div>
+      <div class="buy">Add to cart</div>
+    </div>
+  </div>
+
+  <div class="widget">
+    <div class="lw-panel">
+      <div class="lw-head">
+        <div class="row"><div class="brand">★ Rewards</div><div class="close">✕</div></div>
+        <div class="lw-tier">🏆 Gold member</div>
+        <div class="lw-balance"><span class="num">1,250</span><span class="unit">points</span></div>
+        <div class="lw-progress">
+          <div class="track"><div class="fill" style="width:72%"></div></div>
+          <div class="lbl">250 points to your next reward</div>
+        </div>
+      </div>
+      <div class="lw-body">
+        <div class="lw-section-title">Available rewards</div>
+        <div class="lw-reward"><div class="ic">🏷️</div><div class="txt"><div class="t">₹200 off</div><div class="s">Any order</div></div><div class="cta">Redeem</div></div>
+        <div class="lw-reward"><div class="ic">🚚</div><div class="txt"><div class="t">Free shipping</div><div class="s">On your next order</div></div><div class="cost">300 pts</div></div>
+        <div class="lw-reward"><div class="ic">🎁</div><div class="txt"><div class="t">10% off order</div><div class="s">Unlock at 800 pts</div></div><div class="cost">800 pts</div></div>
+      </div>
+      <div class="lw-nav">
+        <div class="item on"><span class="ic">🏠</span>Home</div>
+        <div class="item"><span class="ic">⭐</span>Earn</div>
+        <div class="item"><span class="ic">🎁</span>Redeem</div>
+        <div class="item"><span class="ic">👥</span>Refer</div>
+      </div>
+      <div class="lw-powered">powered by GoSelf</div>
+    </div>
+  </div>
+</div>

@@ -26,15 +26,16 @@
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-  "Access-Control-Allow-Headers":
-    "Content-Type, Authorization, X-Client-Info, Apikey",
-};
+import { getCorsHeaders } from "../_shared/cors.ts";
+import { verifyWidgetToken } from "../_shared/widget-auth.ts";
 
 Deno.serve(async (req: Request) => {
+  const corsHeaders = {
+    ...getCorsHeaders(req.headers.get("origin")),
+    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey, X-Widget-Token",
+  };
+
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 200, headers: corsHeaders });
   }
@@ -45,25 +46,25 @@ Deno.serve(async (req: Request) => {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
 
+  // C-01: Token required — this endpoint returns issued discount codes (PII)
+  const claims = await verifyWidgetToken(req);
+  if (!claims) return json({ error: "Unauthorized — valid X-Widget-Token required" }, 401);
+
+  // Identity is authoritative from the verified token
+  const memberUserId: string = claims.mid;
+  const tokenClientId: string = claims.cid;
+
   try {
-    // ── Parse inputs ─────────────────────────────────────────────────────────
+    // ── Parse shop_domain from request (for cross-check) ─────────────────────
     let shopDomain: string | null = null;
-    let memberUserId: string | null = null;
-    let email: string | null = null;
-    let clientId: string | null = null;
+    let clientId: string | null = tokenClientId; // start with token's client
 
     if (req.method === "GET") {
       const url = new URL(req.url);
       shopDomain = url.searchParams.get("shop") ?? url.searchParams.get("shop_domain");
-      memberUserId = url.searchParams.get("member_user_id");
-      email = url.searchParams.get("email") ?? url.searchParams.get("customer_email");
-      clientId = url.searchParams.get("client_id");
     } else {
       const body = await req.json().catch(() => ({}));
       shopDomain = body.shop_domain ?? body.shop ?? null;
-      memberUserId = body.member_user_id ?? null;
-      email = body.email ?? body.customer_email ?? null;
-      clientId = body.client_id ?? null;
     }
 
     if (!shopDomain && !clientId) {
@@ -105,18 +106,7 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    // ── 2. Resolve member_user_id from email ──────────────────────────────────
-    if (!memberUserId && email) {
-      const q = supabase
-        .from("member_users")
-        .select("id")
-        .eq("email", email);
-
-      if (clientId) q.eq("client_id", clientId);
-
-      const { data: mu } = await q.maybeSingle();
-      memberUserId = mu?.id ?? null;
-    }
+    // ── 2. Member identity comes from the verified token — no email lookup ────
 
     // ── 3. Fetch points balance ───────────────────────────────────────────────
     let pointsBalance = 0;
@@ -133,27 +123,42 @@ Deno.serve(async (req: Request) => {
     }
 
 
-    // ── 4. Fetch distributions + rewards (flat — no nested client join) ─────────
-    const { data: rawDistributions } = await supabase
+    // ── 4. Fetch distributions, then rewards separately (avoids PostgREST join issues) ─────
+    const { data: distRows, error: distError } = await supabase
       .from("offer_distributions")
-      .select(`
-        id,
-        points_cost,
-        access_type,
-        max_per_member,
-        offer:rewards(
-          id, title, description, reward_type, offer_type, coupon_type,
-          discount_value, min_purchase_amount, currency, terms_conditions,
-          generic_coupon_code, available_codes, image_url, owner_client_id,
-          status
-        )
-      `)
+      .select("id, points_cost, access_type, max_per_member, offer_id")
       .eq("distributing_client_id", clientId)
       .eq("is_active", true);
 
-    const activeDistributions = (rawDistributions ?? []).filter((d: any) =>
-      d.offer && d.offer.status === "active"
-    );
+    if (distError) {
+      console.error("offer_distributions query error:", JSON.stringify(distError));
+    }
+    console.log("distRows count:", distRows?.length ?? "null", "clientId:", clientId);
+
+    const offerIds = (distRows ?? []).map((d: any) => d.offer_id).filter(Boolean);
+
+    let rewardMap: Record<string, any> = {};
+    if (offerIds.length > 0) {
+      const { data: rewardRows, error: rewardError } = await supabase
+        .from("rewards")
+        .select("id, title, description, reward_type, offer_type, coupon_type, discount_value, min_purchase_amount, terms_conditions, generic_coupon_code, available_codes, image_url, owner_client_id, status")
+        .in("id", offerIds)
+        .eq("status", "active");
+
+      if (rewardError) {
+        console.error("rewards query error:", JSON.stringify(rewardError));
+      }
+      for (const r of (rewardRows ?? [])) {
+        rewardMap[r.id] = r;
+      }
+    }
+
+    // Merge: attach reward data to each distribution row
+    const activeDistributions = (distRows ?? [])
+      .map((d: any) => ({ ...d, offer: rewardMap[d.offer_id] ?? null }))
+      .filter((d: any) => d.offer !== null);
+
+    console.log("activeDistributions count:", activeDistributions.length);
 
     // ── 4a. Fetch client logos for all owner_client_ids in one query ──────────
     const ownerClientIds = [

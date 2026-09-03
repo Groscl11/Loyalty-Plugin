@@ -1,9 +1,11 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
+import { verifyWidgetToken } from '../_shared/widget-auth.ts';
+import { getCorsHeaders } from '../_shared/cors.ts';
 
+// Legacy wildcard replaced — CORS is now origin-restricted via getCorsHeaders (H-23 fix)
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Client-Info, Apikey',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Client-Info, Apikey, X-Widget-Token',
 };
 
 function json(body: unknown, status = 200) {
@@ -14,8 +16,17 @@ function json(body: unknown, status = 200) {
 }
 
 Deno.serve(async (req: Request) => {
-  if (req.method === 'OPTIONS') return new Response(null, { status: 200, headers: corsHeaders });
+  const originHeaders = { ...corsHeaders, 'Access-Control-Allow-Origin': getCorsHeaders(req.headers.get('origin'))['Access-Control-Allow-Origin'] };
+  if (req.method === 'OPTIONS') return new Response(null, { status: 200, headers: originHeaders });
   if (req.method !== 'POST') return json({ error: 'POST required' }, 405);
+
+  // C-01: Verify widget token — identity comes from the signed token, not request body
+  const claims = await verifyWidgetToken(req);
+  if (!claims) {
+    return new Response(JSON.stringify({ error: 'Unauthorized — valid X-Widget-Token required' }), {
+      status: 401, headers: { ...originHeaders, 'Content-Type': 'application/json' },
+    });
+  }
 
   try {
     const supabase = createClient(
@@ -25,11 +36,13 @@ Deno.serve(async (req: Request) => {
 
     const body = await req.json();
     // distribution_id (offer_distributions.id) is preferred; reward_id (rewards.id) is fallback
-    // NOTE: points are NOT accepted from the caller ΓÇö they are read from offer_distributions.points_cost
-    const { member_user_id, email, shop_domain, reward_id, distribution_id } = body;
+    // NOTE: points are NOT accepted from the caller — they are read from offer_distributions.points_cost
+    // NOTE: member identity is taken from the verified token claims, not the body
+    const { shop_domain, reward_id, distribution_id } = body;
+    const member_user_id = claims.mid;  // authoritative — from verified token
 
-    if (!shop_domain || (!member_user_id && !email) || !reward_id) {
-      return json({ error: 'shop_domain, (member_user_id or email), and reward_id are required' }, 400);
+    if (!shop_domain || !reward_id) {
+      return json({ error: 'shop_domain and reward_id are required' }, 400);
     }
 
     // ΓöÇΓöÇ Resolve client_id ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
@@ -213,18 +226,32 @@ Deno.serve(async (req: Request) => {
     const newBalance = currentBalance - pointsCost;
     const newRedeemed = ((loyaltyStatus as any).lifetime_points_redeemed || 0) + pointsCost;
 
-    const { error: updateErr } = await supabase
+    // C-05: Atomic conditional update — .gte() guard prevents double-spend race condition.
+    // If a concurrent request already deducted the balance below pointsCost, the update
+    // affects 0 rows and we return 409 instead of issuing a second reward.
+    const { count: updateCount, error: updateErr } = await supabase
       .from('member_loyalty_status')
       .update({
         points_balance: newBalance,
         lifetime_points_redeemed: newRedeemed,
         updated_at: new Date().toISOString(),
       })
-      .eq('id', (loyaltyStatus as any).id);
+      .eq('id', (loyaltyStatus as any).id)
+      .gte('points_balance', pointsCost)  // atomic guard: no-op if balance already insufficient
+      .select('id', { count: 'exact', head: true });
 
     if (updateErr) {
       console.error('[redeem-loyalty-points] Balance update failed:', updateErr.message);
       return json({ error: 'Failed to update points balance' }, 500);
+    }
+
+    if ((updateCount ?? 0) === 0) {
+      // Balance changed between our read and write — reject to prevent double-spend
+      return json({
+        error: 'Insufficient points or concurrent redemption detected — please try again',
+        current_points: currentBalance,
+        required_points: pointsCost,
+      }, 409);
     }
 
     // ΓöÇΓöÇ Record transaction ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ

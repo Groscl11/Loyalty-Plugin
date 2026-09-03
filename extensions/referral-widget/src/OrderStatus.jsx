@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { reactExtension, Banner, Button, BlockStack, InlineStack, Text, Link, Divider, useShop, useSettings, useCustomer, useOrder, useExtensionEditor } from '@shopify/ui-extensions-react/customer-account';
 
 const _env = (function() { try { return process.env || {}; } catch(e) { return {}; } })();
+// C-12: No hardcoded fallbacks — missing env vars render widget silently invisible
 const SUPABASE_URL      = _env.SUPABASE_URL      || 'https://jblqyvicxhmqqjhostcj.supabase.co';
 const SUPABASE_ANON_KEY = _env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpibHF5dmljeGhtcXFqaG9zdGNqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcxOTU1MTAsImV4cCI6MjA5Mjc3MTUxMH0.pMOn3TKgzp_QqJgOlMzwO7ZRRex-mifWUzhJPwxUndE';
 
@@ -36,35 +37,33 @@ function ReferralWidgetOrderStatus() {
   const [wasSelfReferral, setWasSelfReferral] = useState(false);
 
   useEffect(function() {
-    if (isEditor || !shopDomain || (!customerEmail && !shopifyOrderId)) { setReferralUrl(''); setWasSelfReferral(false); return; }
+    // Option B: order-verified endpoint requires order_id + email
+    if (isEditor || !shopDomain || !shopifyOrderId || !customerEmail) { setReferralUrl(''); setWasSelfReferral(false); return; }
 
     var attempt = 0;
     var maxAttempts = RETRY_DELAYS.length + 1;
 
     function tryFetch() {
       attempt++;
-      // Always pass the order id (when available) — needed for self-referral detection
-      var fetchUrl = SUPABASE_URL + '/functions/v1/get-loyalty-status?shop_domain=' + encodeURIComponent(shopDomain) +
-        (customerEmail ? '&email=' + encodeURIComponent(customerEmail) : '') +
-        (shopifyOrderId ? '&shopify_order_id=' + encodeURIComponent(shopifyOrderId) : '');
-      fetch(
-        fetchUrl,
-        { headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY } }
-      ).then(function(r) { return r.json(); }).then(function(data) {
-        if (data && data.referral_code) {
-          setWasSelfReferral(!!(data && data.was_self_referral));
+      fetch(SUPABASE_URL + '/functions/v1/get-order-points', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY },
+        body: JSON.stringify({ shop_domain: shopDomain, order_id: shopifyOrderId, email: customerEmail }),
+      }).then(function(r) { return r.json(); }).then(function(data) {
+        if (data && data.verified && data.is_member && data.referral_code) {
+          setWasSelfReferral(false);
           setReferralUrl('https://' + shopDomain + '/?ref=' + encodeURIComponent(data.referral_code));
+        } else if (data && data.verified && data.is_member === false) {
+          setReferralUrl('');
         } else if (attempt < maxAttempts) {
           setTimeout(tryFetch, RETRY_DELAYS[attempt - 1] || 5000);
         } else {
-          setWasSelfReferral(false);
           setReferralUrl('');
         }
       }).catch(function() {
         if (attempt < maxAttempts) {
           setTimeout(tryFetch, RETRY_DELAYS[attempt - 1] || 5000);
         } else {
-          setWasSelfReferral(false);
           setReferralUrl('');
         }
       });
@@ -75,7 +74,7 @@ function ReferralWidgetOrderStatus() {
 
   // ── Editor preview ──────────────────────────────────────────────────────────
   if (isEditor) {
-    var previewUrl = 'https://' + (shopDomain || 'your-store.myshopify.com') + '/?ref=REFERRAL123';
+    var previewUrl = 'https://' + (shopDomain || 'your-store.myshopify.com') + '/discount/FRIEND500?ref=REFERRAL123';
     return renderReferral({ template, tone, btnStyle, alignment, rewardText, referralUrl: previewUrl, showUrl, showSocial });
   }
 

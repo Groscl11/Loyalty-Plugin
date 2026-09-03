@@ -1,0 +1,43 @@
+api_version = "2025-07"
+
+[[extensions]]
+uid = "a9634ec9-b3cf-4f4d-91c4-da0816e0fbd9"
+type = "ui_extension"
+name = "Redeem Points at Checkout"
+handle = "redeem-points-checkout"
+
+[[extensions.targeting]]
+module = "./src/Checkout.jsx"
+export = "default"
+target = "purchase.checkout.block.render"
+
+[extensions.capabilities]
+network_access = true
+api_access = true
+
+[extensions.settings]
+[[extensions.settings.fields]]
+key = "heading_text"
+type = "single_line_text_field"
+name = "Heading Text"
+description = "Shown above the redemption control. Default: Redeem your points"
+
+[[extensions.settings.fields]]
+key = "banner_tone"
+type = "single_line_text_field"
+name = "Banner Colour"
+description = "Colour of the redemption card."
+
+[[extensions.settings.fields.validations]]
+name = "choices"
+value = '["success", "info", "warning"]'
+
+[[extensions.settings.fields]]
+key = "text_alignment"
+type = "single_line_text_field"
+name = "Text Alignment"
+description = "Alignment of content within the block"
+
+[[extensions.settings.fields.validations]]
+name = "choices"
+value = '["start", "center", "end"]'

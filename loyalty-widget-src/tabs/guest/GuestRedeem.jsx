@@ -1,190 +1,182 @@
 /**
- * GuestRedeem — GoSelf Loyalty Widget V6
- * 3 sub-tabs: Store | Partners | Free Products
- * Gate fires on action button click only.
+ * GuestRedeem — real rewards catalog for unauthenticated visitors.
+ *
+ * Uses actual redeemCatalog data (fetched without auth — same catalog, 0 points balance).
+ * Each card shows the reward details with a lock replacing the redeem button.
+ * Falls back to generic teaser cards if catalog fetch returned nothing.
  */
 
 import React, { useState } from 'react';
+import { tokens, accentSoft, fmtPts } from '../../utils/tokens.js';
 
-const SUB_TABS = ['store', 'partners', 'free'];
+// Generic teaser cards — shown only when catalog is truly empty
+const TEASER_CARDS = [
+  { id: 't1', _type: 'store',   icon: '💸', title: 'Store Discount',    desc: 'Cashback on your next purchase',     pts: '500 – 2,000 pts' },
+  { id: 't2', _type: 'store',   icon: '🛍️', title: 'Free Shipping',     desc: 'Waive delivery fees on any order',   pts: '300 pts' },
+  { id: 't3', _type: 'partner', icon: '🎁', title: 'Partner Voucher',   desc: 'Exclusive offers from partner brands', pts: '1,000 pts' },
+  { id: 't4', _type: 'store',   icon: '✨', title: 'Premium Reward',    desc: 'Members-only exclusive perk',         pts: '5,000 pts' },
+];
+
+const FILTER_TABS = [
+  { id: 'all',     label: 'All'        },
+  { id: 'store',   label: 'Store'      },
+  { id: 'partner', label: 'Partners'   },
+  { id: 'free',    label: 'Marketplace'},
+];
+
+const TYPE_STYLE = {
+  store:   { label: 'Store reward',   color: '#2563eb', bg: '#eff6ff' },
+  partner: { label: 'Partner offer',  color: '#db2777', bg: '#fce7f3' },
+  free:    { label: 'Marketplace',    color: '#16a34a', bg: '#dcfce7' },
+};
 
 const GuestRedeem = React.memo(function GuestRedeem({ data, config, onGate }) {
-  const [subTab, setSubTab] = useState('store');
+  const [filter, setFilter] = useState('all');
 
-  const catalog = data.catalog || [];
-  const storeItems   = catalog.filter(r => r.type === 'discount');
-  const partnerItems = catalog.filter(r => r.type === 'partner');
-  const freeItems    = catalog.filter(r => r.type === 'free');
+  const { redeemCatalog } = data;
+  const discounts = (redeemCatalog?.discountRewards || []).map(r => ({ ...r, _type: 'store'   }));
+  const brands    = (redeemCatalog?.brandRewards    || []).map(r => ({ ...r, _type: 'partner' }));
+  const manual    = (redeemCatalog?.manualRewards   || []).map(r => ({ ...r, _type: 'free'    }));
+  const allReal   = [...discounts, ...brands, ...manual];
+  const cards     = allReal.length > 0 ? allReal : TEASER_CARDS;
+
+  // Filter tabs — only show if multiple types exist
+  const counts = {
+    all: cards.length,
+    store:   cards.filter(c => c._type === 'store').length,
+    partner: cards.filter(c => c._type === 'partner').length,
+    free:    cards.filter(c => c._type === 'free').length,
+  };
+  const visibleFilters = FILTER_TABS.filter(f => {
+    if (f.id === 'partner' && !config.showPartnerBrands) return false;
+    if (f.id === 'free'    && !config.enableFreeProducts) return false;
+    return f.id === 'all' || counts[f.id] > 0;
+  });
+
+  const filtered = filter === 'all' ? cards : cards.filter(c => c._type === filter);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: tokens.surface }}>
+      <div style={{ flex: 1, overflowY: 'auto', padding: '16px 16px 80px' }}>
 
-      {/* Sub-tab bar */}
-      <div style={{ display: 'flex', borderBottom: '1px solid #f3f4f6', padding: '0 16px' }}>
-        {SUB_TABS.map(t => {
-          if (t === 'partners' && !config.showPartnerBrands) return null;
-          if (t === 'free' && !config.enableFreeProducts) return null;
-          const label = t === 'store' ? '🏪 Store' : t === 'partners' ? '🤝 Partners' : '🎁 Free';
-          return (
-            <button
-              key={t}
-              onClick={() => setSubTab(t)}
-              style={{
-                flex: 1,
-                padding: '10px 0',
-                border: 'none',
-                background: 'transparent',
-                borderBottom: subTab === t ? `2px solid ${config.accentColor}` : '2px solid transparent',
-                color: subTab === t ? config.accentColor : '#6b7280',
-                fontWeight: subTab === t ? 600 : 400,
-                fontSize: 12,
-                cursor: 'pointer',
-              }}
-            >
-              {label}
-            </button>
-          );
-        })}
+        <div style={{ fontSize: 22, fontWeight: 600, color: tokens.text, marginBottom: 4 }}>
+          Rewards catalog
+        </div>
+        <div style={{ fontSize: 13, color: tokens.textMuted, marginBottom: 14 }}>
+          Sign in to unlock and redeem with your {config.pointsNoun || 'points'}.
+        </div>
+
+        {/* Filter chips */}
+        {visibleFilters.length > 2 && (
+          <div style={{ display: 'flex', gap: 6, marginBottom: 14, overflowX: 'auto', paddingBottom: 2 }}>
+            {visibleFilters.map(f => (
+              <button
+                key={f.id}
+                onClick={() => setFilter(f.id)}
+                style={{
+                  border: filter === f.id ? `1px solid ${config.accentColor}` : `1px solid ${tokens.border}`,
+                  background: filter === f.id ? config.accentColor : tokens.surface,
+                  color: filter === f.id ? '#fff' : tokens.text,
+                  padding: '5px 12px', borderRadius: 999,
+                  fontSize: 12, fontWeight: 500, cursor: 'pointer',
+                  whiteSpace: 'nowrap', flexShrink: 0,
+                }}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {filtered.map(item => (
+          <LockedRewardCard
+            key={item.id}
+            item={item}
+            config={config}
+            onGate={onGate}
+          />
+        ))}
       </div>
 
-      <div style={{ flex: 1, overflowY: 'auto', padding: '14px 16px 24px' }}>
-
-        {subTab === 'store' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {storeItems.length === 0 && <EmptyState text="No store rewards available yet." />}
-            {storeItems.map(item => (
-              <RedeemCard
-                key={item.id}
-                item={item}
-                config={config}
-                ctaLabel="Redeem"
-                onAction={() => onGate(`redeem "${item.title}"`)}
-                accentColor={config.accentColor}
-              />
-            ))}
-          </div>
-        )}
-
-        {subTab === 'partners' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {partnerItems.length === 0 && <EmptyState text="No partner offers available yet." />}
-            {partnerItems.map(item => (
-              <RedeemCard
-                key={item.id}
-                item={item}
-                config={config}
-                ctaLabel="Claim"
-                onAction={() => onGate(`claim ${item.brandName || ''} ${item.discountValue} offer`)}
-                accentColor="#10b981"
-              />
-            ))}
-          </div>
-        )}
-
-        {subTab === 'free' && (
-          <div>
-            <div
-              style={{
-                background: '#fffbeb',
-                border: '1px solid #fde68a',
-                borderRadius: 10,
-                padding: '10px 14px',
-                fontSize: 12,
-                color: '#92400e',
-                marginBottom: 14,
-              }}
-            >
-              🛒 Redeem points → item added to cart at ₹0 via Shopify Functions
-            </div>
-            {freeItems.length === 0 && <EmptyState text="No free products available yet." />}
-            {freeItems.map(item => (
-              <RedeemCard
-                key={item.id}
-                item={item}
-                config={config}
-                ctaLabel="Add Free"
-                onAction={() => onGate(`add "${item.title}" free to your cart`)}
-                accentColor="#16a34a"
-              />
-            ))}
-          </div>
-        )}
+      {/* Sticky sign-in bar */}
+      <div style={{
+        position: 'sticky', bottom: 0,
+        background: tokens.surface,
+        borderTop: `1px solid ${tokens.border}`,
+        padding: '12px 16px',
+        flexShrink: 0,
+      }}>
+        <button
+          onClick={() => onGate('unlock rewards')}
+          style={{
+            width: '100%', padding: 13,
+            background: config.accentColor, color: '#fff',
+            border: 'none', borderRadius: tokens.radiusLg,
+            fontSize: 14, fontWeight: 700, cursor: 'pointer',
+          }}
+        >
+          🔓 Sign in to redeem rewards
+        </button>
       </div>
     </div>
   );
 });
 
-function RedeemCard({ item, config, ctaLabel, onAction, accentColor }) {
+function LockedRewardCard({ item, config, onGate }) {
+  const ts = TYPE_STYLE[item._type] || TYPE_STYLE.store;
+  const icon = item._type === 'partner' ? '👜' : item._type === 'free' ? '🎁' : '💸';
+  const pts  = item.pts
+    ?? (item.pointsCost != null ? `${fmtPts(item.pointsCost)} ${config.pointsAbbrev || 'pts'}` : '');
+
   return (
-    <div
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: 12,
-        padding: '12px 14px',
-        border: '1px solid #f3f4f6',
-        borderRadius: 12,
-        background: '#fff',
-      }}
-    >
-      {/* Discount badge */}
-      <div
-        style={{
-          width: 46,
-          height: 46,
-          borderRadius: 10,
-          background: `${accentColor}18`,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          flexShrink: 0,
-          fontWeight: 700,
-          fontSize: 11,
-          color: accentColor,
-          textAlign: 'center',
-          padding: '2px',
-        }}
-      >
-        {item.discountValue}
+    <div style={{
+      display: 'flex', gap: 12, alignItems: 'center',
+      padding: 14, marginBottom: 10,
+      border: `1px solid ${tokens.border}`, borderRadius: tokens.radiusLg,
+      background: tokens.surface,
+      opacity: 0.72,
+      position: 'relative',
+    }}>
+      {/* Lock badge */}
+      <div style={{ position: 'absolute', top: 8, right: 8, fontSize: 12, color: tokens.textSubtle }}>
+        🔒
       </div>
 
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontWeight: 600, fontSize: 13, color: '#111827', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+      {/* Icon */}
+      <div style={{
+        width: 44, height: 44, borderRadius: 10, background: ts.bg,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        fontSize: 22, flexShrink: 0,
+      }}>
+        {icon}
+      </div>
+
+      {/* Content */}
+      <div style={{ flex: 1, minWidth: 0, paddingRight: 20 }}>
+        <span style={{
+          display: 'inline-block', marginBottom: 4,
+          fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5,
+          color: ts.color, background: ts.bg, padding: '2px 8px', borderRadius: 999,
+        }}>
+          {ts.label}
+        </span>
+        <div style={{
+          fontWeight: 600, fontSize: 14, color: tokens.text,
+          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+        }}>
           {item.title}
         </div>
-        {item.brandName && (
-          <div style={{ fontSize: 11, color: '#6b7280', marginTop: 1 }}>{item.brandName}</div>
+        {(item.desc || item.description || item.brandName) && (
+          <div style={{ fontSize: 11, color: tokens.textMuted, marginTop: 1 }}>
+            {item.desc || item.description || item.brandName}
+          </div>
         )}
-        <div style={{ fontSize: 11, color: '#6b7280', marginTop: 1 }}>
-          {Number(item.pointsCost).toLocaleString('en-IN')} {config.pointsAbbrev}
-        </div>
+        {pts && (
+          <div style={{ fontSize: 12, color: tokens.text, fontWeight: 600, marginTop: 4 }}>
+            {pts}
+          </div>
+        )}
       </div>
-
-      <button
-        onClick={onAction}
-        style={{
-          background: accentColor,
-          color: '#fff',
-          border: 'none',
-          borderRadius: 8,
-          padding: '7px 14px',
-          fontSize: 12,
-          fontWeight: 600,
-          cursor: 'pointer',
-          flexShrink: 0,
-          whiteSpace: 'nowrap',
-        }}
-      >
-        {ctaLabel}
-      </button>
-    </div>
-  );
-}
-
-function EmptyState({ text }) {
-  return (
-    <div style={{ textAlign: 'center', padding: '32px 0', color: '#9ca3af', fontSize: 13 }}>
-      {text}
     </div>
   );
 }

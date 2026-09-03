@@ -1,18 +1,12 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { verifyAdminSecret } from '../_shared/admin-auth.ts';
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': 'https://goself.netlify.app',
-  'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Client-Info, Apikey, X-Admin-Secret',
-};
+import { getCorsHeaders } from '../_shared/cors.ts';
+// H-14: CORS was pointing to stale goself.netlify.app — now uses getCorsHeaders allowlist
 
 Deno.serve(async (req: Request) => {
+  const corsHeaders = getCorsHeaders(req.headers.get('origin'));
   if (req.method === 'OPTIONS') {
-    return new Response(null, {
-      status: 200,
-      headers: corsHeaders,
-    });
+    return new Response(null, { status: 200, headers: corsHeaders });
   }
 
   if (!verifyAdminSecret(req)) {
@@ -301,15 +295,13 @@ Deno.serve(async (req: Request) => {
       );
     }
 
+    // H-14: Remove PII from response — email, phone, full_name excluded
     return new Response(
       JSON.stringify({
         success: true,
         message: pointsValue > 0 ? 'Points added successfully' : 'Points removed successfully',
         transaction_reference_id: txData?.transaction_reference_id || null,
         member_id: member.id,
-        email: member.email,
-        phone: member.phone,
-        full_name: member.full_name,
         previous_points: currentPoints,
         adjustment: pointsValue,
         new_balance: newBalance,

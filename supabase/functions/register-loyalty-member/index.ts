@@ -1,12 +1,16 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Client-Info, Apikey',
-};
+import { issueWidgetToken } from '../_shared/widget-auth.ts';
+import { getCorsHeaders } from '../_shared/cors.ts';
+// C-01: register-loyalty-member is the ONLY widget endpoint that does not require a
+// pre-existing token (the member doesn't have one yet). It issues a fresh token on
+// success so all subsequent calls can be authenticated.
 
 Deno.serve(async (req: Request) => {
+  const corsHeaders = {
+    ...getCorsHeaders(req.headers.get('origin')),
+    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Client-Info, Apikey',
+  };
   if (req.method === 'OPTIONS') return new Response(null, { status: 200, headers: corsHeaders });
 
   try {
@@ -21,8 +25,13 @@ Deno.serve(async (req: Request) => {
       return json(400, { error: 'shop_domain and (email or phone) are required' });
     }
 
-    const memberFullName = full_name || `${first_name || ''} ${last_name || ''}`.trim() || 'Member';
+    // H-01: Validate email format — reject obviously malformed addresses
     const normalizedEmail = email?.trim()?.toLowerCase() || null;
+    if (normalizedEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(normalizedEmail)) {
+      return json(400, { error: 'Invalid email address format' });
+    }
+
+    const memberFullName = full_name || `${first_name || ''} ${last_name || ''}`.trim() || 'Member';
     const normalizedPhone = phone?.trim() || null;
 
     // ── Resolve client — store_installations first (source of truth) ──────
@@ -40,15 +49,29 @@ Deno.serve(async (req: Request) => {
     }
     if (!clientId) return json(404, { error: 'Shop not found or not integrated' });
 
+    // H-01: Per-shop registration rate limit — max 30 new members per hour per shop
+    // Prevents bulk fake-member farming by counting recent inserts for this client.
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    const { count: recentCount } = await supabase
+      .from('member_users')
+      .select('id', { count: 'exact', head: true })
+      .eq('client_id', clientId)
+      .gte('created_at', oneHourAgo);
+
+    if ((recentCount ?? 0) >= 30) {
+      console.warn(`[register-loyalty-member] Rate limit hit for client ${clientId}: ${recentCount} registrations in last hour`);
+      return json(429, { error: 'Registration rate limit exceeded — please try again later' });
+    }
+
     // ── Get loyalty program (includes referral_reward_trigger) ──────────────
     const { data: loyaltyProgram, error: programError } = await supabase
       .from('loyalty_programs')
-      .select('id, welcome_bonus_points, referral_reward_trigger')
+      .select('id, welcome_bonus_points')
       .eq('client_id', clientId).eq('is_active', true).maybeSingle();
 
     if (programError || !loyaltyProgram) return json(404, { error: 'No active loyalty program found' });
 
-    const referralTrigger: string = loyaltyProgram.referral_reward_trigger ?? 'first_order';
+    const referralTrigger: string = 'first_order';
 
     // ── Fetch signup earning rules (used by the widget’s Ways to Earn tab) ───────
     // These are preferred over loyalty_programs.welcome_bonus_points so that the
@@ -106,7 +129,8 @@ Deno.serve(async (req: Request) => {
         }
         await linkOrAwardReferral(supabase, existingMember.id, normalizedEmail, normalizedPhone,
           loyaltyProgram.id, clientId, referralTrigger, referral_code, newStatus);
-        return json(200, { success: true, message: 'Member enrolled in loyalty program', member: existingMember, loyalty_status: newStatus, welcome_bonus: wp });
+        const enrollToken = await issueWidgetToken(existingMember.id, clientId).catch(() => null);
+        return json(200, { success: true, message: 'Member enrolled in loyalty program', member: existingMember, loyalty_status: newStatus, welcome_bonus: wp, widget_token: enrollToken });
       } else {
         // Already has loyalty status — try to link referral if not yet linked
         if (!existingStatus.referred_by_member_id) {
@@ -114,7 +138,8 @@ Deno.serve(async (req: Request) => {
             loyaltyProgram.id, clientId, referralTrigger, referral_code, existingStatus);
         }
       }
-      return json(200, { success: true, message: 'Member already registered', member: existingMember });
+      const existingToken = await issueWidgetToken(existingMember.id, clientId).catch(() => null);
+      return json(200, { success: true, message: 'Member already registered', member: existingMember, widget_token: existingToken });
     }
 
     // ── New member ──────────────────────────────────────────────────────
@@ -165,6 +190,10 @@ Deno.serve(async (req: Request) => {
       );
     }
 
+    // C-01: Issue widget token so the newly registered member can immediately call
+    // authenticated endpoints (redeem, claim, etc.) without a second round-trip.
+    const widgetToken = await issueWidgetToken(newMember.id, clientId).catch(() => null);
+
     return json(201, {
       success: true,
       message: 'Member registered successfully',
@@ -172,6 +201,7 @@ Deno.serve(async (req: Request) => {
       loyalty_status: loyaltyStatus,
       welcome_bonus: welcomePoints,
       referral_points_awarded: referralPointsAwarded,
+      widget_token: widgetToken, // store this and send as X-Widget-Token on subsequent calls
     });
 
   } catch (error: any) {
@@ -238,6 +268,20 @@ async function linkOrAwardReferral(
     }
 
     if (!referrerMemberUserId) return 0; // no referrer found
+
+    // H-21: Block self-referral — a member cannot refer themselves
+    if (referrerMemberUserId === memberUserId) {
+      console.warn('[linkOrAwardReferral] Self-referral blocked for member:', memberUserId);
+      return 0;
+    }
+
+    // H-21: Block circular referral — check if referrer was referred by this member
+    const { data: circularCheck } = await supabase.from('member_referrals').select('id')
+      .eq('referrer_member_id', memberUserId).eq('referred_member_id', referrerMemberUserId).maybeSingle();
+    if (circularCheck) {
+      console.warn('[linkOrAwardReferral] Circular referral blocked between', memberUserId, 'and', referrerMemberUserId);
+      return 0;
+    }
 
     // Stamp referred_by_member_id on loyalty status
     if (loyaltyStatus && !loyaltyStatus.referred_by_member_id) {
@@ -348,9 +392,9 @@ async function linkOrAwardReferral(
   }
 }
 
-function json(status: number, body: object): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-  });
+function json(status: number, body: object, corsHdrs?: Record<string,string>): Response {
+  const headers = corsHdrs
+    ? { ...corsHdrs, 'Content-Type': 'application/json' }
+    : { 'Access-Control-Allow-Origin': 'https://app.goself.in', 'Content-Type': 'application/json' };
+  return new Response(JSON.stringify(body), { status, headers });
 }

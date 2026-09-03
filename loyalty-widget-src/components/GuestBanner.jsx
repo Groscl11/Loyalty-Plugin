@@ -25,11 +25,11 @@ const GuestBanner = React.memo(function GuestBanner({ config, onGate }) {
           Explore the rewards program below
         </div>
         <div style={{ opacity: 0.8 }}>
-          Tap any button to join free &amp; activate
+          Sign in to earn &amp; redeem rewards
         </div>
       </div>
       <button
-        onClick={() => onGate('join the rewards program')}
+        onClick={() => onGate('sign in')}
         style={{
           flexShrink: 0,
           background: config.accentColor,
@@ -43,7 +43,7 @@ const GuestBanner = React.memo(function GuestBanner({ config, onGate }) {
           whiteSpace: 'nowrap',
         }}
       >
-        Join Free →
+        Sign in →
       </button>
     </div>
   );

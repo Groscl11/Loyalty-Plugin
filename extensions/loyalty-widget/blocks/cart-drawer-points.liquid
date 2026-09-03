@@ -1,0 +1,120 @@
+{%- if block.settings.enable_drawer_points -%}
+<script>
+(function () {
+var SUPABASE_URL = 'https://jblqyvicxhmqqjhostcj.supabase.co';
+var ANON_KEY     = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpibHF5dmljeGhtcXFqaG9zdGNqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcxOTU1MTAsImV4cCI6MjA5Mjc3MTUxMH0.pMOn3TKgzp_QqJgOlMzwO7ZRRex-mifWUzhJPwxUndE';
+var shopDomain    = {{ shop.permanent_domain | json }};
+var customerEmail = {{ customer.email | json }};
+var accent        = {{ block.settings.accent_color | default: '#6d5ef6' | json }};
+var label         = {{ block.settings.label_text   | default: "You'll earn" | json }};
+if (!shopDomain) return;
+var hdrs = { apikey: ANON_KEY, Authorization: 'Bearer ' + ANON_KEY, 'Content-Type': 'application/json' };
+var rate = 1, divisor = 1, pname = 'Points', ready = false, lastPts = -1;
+var DRAWER_SEL = 'cart-drawer, #CartDrawer, .cart-drawer, .drawer--cart, [id*="cart-drawer" i], [class*="cart-drawer" i]';
+var FOOTER_SEL = '.drawer__footer, .cart-drawer__footer, .cart__footer, [class*="footer" i]';
+function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+function bannerHtml(pts) {
+return '<span style="display:inline-flex;align-items:center;gap:6px;justify-content:center;flex-wrap:wrap">'
++ '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="' + accent + '" stroke-width="2.5" style="flex-shrink:0">'
++ '<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>'
++ esc(label) + ' <strong style="color:' + accent + '">' + pts + ' ' + esc(pname) + '</strong> on this order</span>';
+}
+// Inject/refresh the banner inside the drawer. Observer is paused around DOM
+// writes so our own mutation doesn't retrigger the loop.
+var observer = null;
+function inject(pts) {
+var drawer = document.querySelector(DRAWER_SEL);
+if (!drawer) return;
+var existing = drawer.querySelector('#rh-cdp');
+if (pts <= 0) { if (existing) existing.remove(); lastPts = pts; return; }
+if (existing && pts === lastPts) return; // nothing changed
+lastPts = pts;
+if (observer) observer.disconnect();
+if (!existing) {
+existing = document.createElement('div');
+existing.id = 'rh-cdp';
+existing.style.cssText = 'padding:10px 14px;margin:8px 0;border:1.5px solid ' + accent + '33;border-radius:10px;background:' + accent + '0d;font-size:13px;color:#1f2430;text-align:center;font-family:inherit';
+var footer = drawer.querySelector(FOOTER_SEL);
+if (footer && footer.parentNode) footer.parentNode.insertBefore(existing, footer);
+else drawer.appendChild(existing);
+}
+existing.innerHTML = bannerHtml(pts);
+if (observer) startObserver();
+}
+function refresh() {
+if (!ready) return;
+fetch('/cart.js', { headers: { Accept: 'application/json' } })
+.then(function (r) { return r.json(); })
+.then(function (c) {
+var total = (c.total_price || 0) / 100;
+inject(divisor > 0 ? Math.floor((total / divisor) * rate) : 0);
+})
+.catch(function () {});
+}
+var debTimer = null;
+function debouncedRefresh() { clearTimeout(debTimer); debTimer = setTimeout(refresh, 400); }
+function startObserver() {
+var drawer = document.querySelector(DRAWER_SEL);
+if (!drawer) return;
+observer = observer || new MutationObserver(function () { debouncedRefresh(); });
+// observe attribute/class (drawer open) + childList (line items change), shallow
+observer.observe(drawer, { attributes: true, attributeFilter: ['class', 'aria-hidden', 'open', 'style'], childList: true, subtree: true });
+}
+function loadRates(done) {
+fetch(SUPABASE_URL + '/functions/v1/get-earn-preview?shop_domain=' + encodeURIComponent(shopDomain),
+{ headers: { apikey: ANON_KEY, Authorization: 'Bearer ' + ANON_KEY } })
+.then(function (r) { return r.json(); })
+.then(function (d) {
+if (d && !d.error) {
+if (d.earn_rate != null) rate = d.earn_rate;
+if (d.earn_divisor != null) divisor = d.earn_divisor;
+if (d.points_name) pname = d.points_name;
+}
+ready = true; done();
+// member tier refinement (optional)
+if (!customerEmail) return;
+fetch(SUPABASE_URL + '/functions/v1/issue-widget-token',
+{ method: 'POST', headers: hdrs, body: JSON.stringify({ email: customerEmail, shop_domain: shopDomain }) })
+.then(function (r) { return r.json(); })
+.then(function (tk) {
+if (!tk || !tk.token) return;
+fetch(SUPABASE_URL + '/functions/v1/get-loyalty-status',
+{ method: 'POST', headers: Object.assign({}, hdrs, { 'X-Widget-Token': tk.token }), body: JSON.stringify({ shop_domain: shopDomain }) })
+.then(function (r) { return r.json(); })
+.then(function (data) {
+if (data && !data.error && data.tier && data.tier.points_earn_rate != null) {
+rate = data.tier.points_earn_rate;
+if (data.tier.points_earn_divisor != null) divisor = data.tier.points_earn_divisor;
+if (data.program && data.program.points_name) pname = data.program.points_name;
+lastPts = -1; refresh();
+}
+}).catch(function () {});
+}).catch(function () {});
+})
+.catch(function () { ready = true; done(); });
+}
+function boot() {
+loadRates(function () { refresh(); startObserver(); });
+// Re-check shortly after cart interactions (add/remove/qty) across themes.
+document.addEventListener('click', function (e) {
+var t = e.target;
+if (t && t.closest && t.closest('[name="add"], [href*="/cart" i], .cart-drawer, cart-drawer, [class*="cart" i]')) debouncedRefresh();
+}, true);
+document.addEventListener('cart:refresh', debouncedRefresh);
+document.addEventListener('cart:updated', debouncedRefresh);
+}
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
+})();
+</script>
+{%- endif -%}
+{% schema %}
+{
+"name": "Cart Drawer Points",
+"target": "body",
+"settings": [
+{ "type": "checkbox", "id": "enable_drawer_points", "label": "Show points banner in cart drawer", "default": true },
+{ "type": "text", "id": "label_text", "label": "Label text", "default": "You'll earn" },
+{ "type": "color", "id": "accent_color", "label": "Accent colour", "default": "#6d5ef6" }
+]
+}
+{% endschema %}

@@ -1,0 +1,82 @@
+{{ 'pre-purchase-rewards.css' | asset_url | stylesheet_tag }}
+<script src="{{ 'pre-purchase-rewards.js' | asset_url }}" defer></script>
+<div id="rh-coll-{{ block.id }}"
+class="rh-coll-wrap style-{{ block.settings.style }}"
+style="--rh-accent:{{ block.settings.accent_color }};--rh-bg:{{ block.settings.bg_color }};--rh-text:{{ block.settings.text_color }};--rh-bar-text:{{ block.settings.bar_text_color }};--rh-grad-from:{{ block.settings.gradient_from }};--rh-grad-to:{{ block.settings.gradient_to }};--rh-radius:{{ block.settings.border_radius }}px;--rh-mt:{{ block.settings.margin_top }}px;--rh-mb:{{ block.settings.margin_bottom }}px;{% unless request.design_mode %}display:none{% endunless %}"
+{{ block.shopify_attributes }}>
+<div class="rh-coll-bar">
+<div class="rh-coll-bar-left">
+<span class="rh-coll-bar-icon">🎁</span>
+<span class="rh-coll-bar-msg">{{ block.settings.headline }}</span>
+<span class="rh-coll-chips" id="rh-coll-chips-{{ block.id }}">
+{% if request.design_mode %}
+<span class="rh-coll-chip"><span class="rh-coll-chip-initials">B1</span><span>Partner Brand</span></span>
+<span class="rh-coll-chip"><span class="rh-coll-chip-initials">B2</span><span>Brand Two</span></span>
+<span style="font-size:11px;opacity:.75;color:inherit">+1 more</span>
+{% endif %}
+</span>
+</div>
+<button class="rh-coll-toggle-btn" id="rh-coll-toggle-{{ block.id }}" type="button" aria-expanded="false">
+<span id="rh-coll-tlbl-{{ block.id }}">{{ block.settings.expand_text }}</span>
+<svg id="rh-coll-arrow-{{ block.id }}" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="transition:transform .2s"><polyline points="6 9 12 15 18 9"/></svg>
+</button>
+</div>
+<div class="rh-coll-grid-wrap" id="rh-coll-panel-{{ block.id }}" style="display:none">
+<div class="rh-coll-panel-hd">
+<p class="rh-coll-panel-title">{{ block.settings.panel_title }}</p>
+<p class="rh-coll-panel-sub">{{ block.settings.panel_subtitle }}</p>
+</div>
+<div class="rh-coll-reward-grid" id="rh-coll-grid-{{ block.id }}">
+<div class="rh-ppr-loading" id="rh-coll-load-{{ block.id }}"><span class="rh-ppr-spinner"></span>Loading rewards…</div>
+</div>
+<p class="rh-ppr-disclaimer">Rewards are issued after order confirmation.</p>
+</div>
+</div>
+<script>
+(window._RhPPRQueue = window._RhPPRQueue || []).push(function() {
+window.RhPPR_initCollectionBanner({
+id: '{{ block.id }}',
+campaignId:   '{{ block.settings.campaign_id }}',
+autoExpand:   {{ block.settings.auto_expand | json }},
+expandText:   '{{ block.settings.expand_text | escape }}',
+collapseText: '{{ block.settings.collapse_text | escape }}'
+});
+});
+</script>
+{% schema %}
+{
+"name": "PPR - Collection Banner",
+"target": "section",
+"settings": [
+{ "type": "header", "content": "Campaign" },
+{ "type": "text", "id": "campaign_id", "label": "Campaign ID", "info": "Find in GoSelf Admin → Campaigns." },
+{ "type": "header", "content": "Messaging" },
+{ "type": "text", "id": "headline",      "label": "Banner headline",    "default": "Shop & unlock exclusive rewards" },
+{ "type": "text", "id": "expand_text",   "label": "Expand button text", "default": "See Rewards ↓" },
+{ "type": "text", "id": "collapse_text", "label": "Collapse button text","default": "Hide ↑" },
+{ "type": "text", "id": "panel_title",   "label": "Panel title",        "default": "Rewards With Your Order" },
+{ "type": "text", "id": "panel_subtitle","label": "Panel subtitle",     "default": "Select your reward after checkout and receive it by email." },
+{ "type": "header", "content": "Behaviour" },
+{ "type": "checkbox", "id": "auto_expand", "label": "Auto-expand on page load", "default": false },
+{ "type": "header", "content": "Style" },
+{
+"type": "select", "id": "style", "label": "Banner style",
+"options": [
+{ "value": "announcement", "label": "Announcement — solid accent" },
+{ "value": "gradient",     "label": "Gradient — left-to-right"   },
+{ "value": "card",         "label": "Card — light with border"   }
+],
+"default": "announcement"
+},
+{ "type": "color", "id": "accent_color",   "label": "Accent colour",       "default": "#6366f1" },
+{ "type": "color", "id": "gradient_from",  "label": "Gradient start",      "default": "#4f46e5" },
+{ "type": "color", "id": "gradient_to",    "label": "Gradient end",        "default": "#7c3aed" },
+{ "type": "color", "id": "bg_color",       "label": "Background (Card)",   "default": "#f5f3ff" },
+{ "type": "color", "id": "bar_text_color", "label": "Bar text colour",     "default": "#ffffff" },
+{ "type": "color", "id": "text_color",     "label": "Text (Card style)",   "default": "#1e1b4b" },
+{ "type": "range", "id": "border_radius",  "label": "Corner radius (px)",  "min": 0, "max": 20, "step": 2,  "default": 8  },
+{ "type": "range", "id": "margin_top",     "label": "Margin top (px)",     "min": 0, "max": 60, "step": 4,  "default": 0  },
+{ "type": "range", "id": "margin_bottom",  "label": "Margin bottom (px)",  "min": 0, "max": 60, "step": 4,  "default": 24 }
+]
+}
+{% endschema %}
