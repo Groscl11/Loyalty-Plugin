@@ -526,9 +526,17 @@ async function registerWebPixel(shop: string, accessToken: string): Promise<void
       }),
     }, 5000);
     const result = await res.json();
-    const errors = result?.data?.webPixelCreate?.userErrors;
-    if (errors?.length) {
-      console.warn("[registerWebPixel]", shop, JSON.stringify(errors));
+    const topLevelErrors = result?.errors;
+    const userErrors = result?.data?.webPixelCreate?.userErrors;
+    const pixelId = result?.data?.webPixelCreate?.webPixel?.id;
+    if (topLevelErrors?.length) {
+      console.error("[registerWebPixel] graphql errors for", shop, JSON.stringify(topLevelErrors));
+    } else if (userErrors?.length) {
+      console.warn("[registerWebPixel] userErrors for", shop, JSON.stringify(userErrors));
+    } else if (pixelId) {
+      console.log("[registerWebPixel] activated for", shop, "id:", pixelId);
+    } else {
+      console.warn("[registerWebPixel] unexpected response for", shop, JSON.stringify(result));
     }
   } catch (err: any) {
     console.error("[registerWebPixel] failed for", shop, err?.message);

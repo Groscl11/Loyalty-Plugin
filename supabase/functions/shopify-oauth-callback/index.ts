@@ -168,11 +168,16 @@ Deno.serve(async (req: Request) => {
     if (installErr) throw installErr;
     const installationId = installation.id;
 
-    // ── 6. Parallel: shop.json (real email) + webhook + pixel registration ──
+    // ── 6. Parallel: shop.json (real email) + webhook registration ──
+    // NOTE: web pixel activation lives in shopify-token-exchange, not here.
+    // Shopify's managed-installation flow (use_legacy_install_flow = false)
+    // never fires this legacy authorization-code redirect for real installs
+    // — shopify-token-exchange is the actual entry point — so registering the
+    // pixel here would be dead code that never runs. See that function's
+    // registerWebPixel() for the live implementation.
     const [shopDetailsResult] = await Promise.allSettled([
       fetchShopDetails(shop, accessToken, 5000),
       registerWebhooks(shop, accessToken, installationId, clientId, supabase),
-      registerWebPixel(shop, accessToken),
     ]);
 
     const shopData      = shopDetailsResult.status === 'fulfilled' ? shopDetailsResult.value : null;
@@ -309,43 +314,6 @@ async function registerWebhooks(
     webhooks_registered_at: new Date().toISOString(),
     webhook_health_status: success === topics.length ? 'healthy' : 'degraded',
   }).eq('id', installationId);
-}
-
-// Activates the attribution-pixel Web Pixel extension for this shop so click
-// tracking works without any merchant touching theme code. Best-effort —
-// failure here must never block install (wrapped in try/catch, no throw).
-async function registerWebPixel(shop: string, accessToken: string): Promise<void> {
-  const clickEndpoint = Deno.env.get('CLICK_TRACKING_ENDPOINT')
-    || `${Deno.env.get('SUPABASE_URL')}/functions/v1/track-utm-click`;
-
-  const query = `
-    mutation webPixelCreate($webPixel: WebPixelInput!) {
-      webPixelCreate(webPixel: $webPixel) {
-        userErrors { field message }
-        webPixel { id }
-      }
-    }
-  `;
-
-  try {
-    const res = await fetchWithTimeout(`https://${shop}/admin/api/2025-01/graphql.json`, {
-      method: 'POST',
-      headers: { 'X-Shopify-Access-Token': accessToken, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        query,
-        variables: { webPixel: { settings: { clickEndpoint } } },
-      }),
-    }, 5000);
-    const json = await res.json();
-    const errors = json?.data?.webPixelCreate?.userErrors;
-    if (errors?.length) {
-      // Common non-fatal case: pixel already exists for this shop (reinstall) —
-      // Shopify returns a userError rather than an HTTP error for that.
-      console.warn('[registerWebPixel]', shop, JSON.stringify(errors));
-    }
-  } catch (err: any) {
-    console.error('[registerWebPixel] failed for', shop, err?.message);
-  }
 }
 
 async function installDefaultPlugins(installationId: string, clientId: string | null, supabase: any): Promise<void> {
