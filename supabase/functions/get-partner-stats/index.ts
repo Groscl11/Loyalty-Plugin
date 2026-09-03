@@ -77,35 +77,43 @@ Deno.serve(async (req: Request) => {
     .eq('client_id', client.id)
     .order('created_at', { ascending: false });
 
-  // Fetch attributed orders for date range
-  const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
-  const { data: orders = [] } = await supabase
-    .from('shopify_orders')
-    .select('shopify_order_id, total_price, processed_at, order_data')
-    .eq('client_id', client.id)
-    .gte('processed_at', cutoff)
-    .limit(10000);
-
   const activeCodes = new Set(
     (codeAssignments as any[])
       .filter((c: any) => c.status === 'active')
       .map((c: any) => (c.code as string).toUpperCase()),
   );
 
-  // Attribute orders to this partner's codes
-  const attributedOrders: { order_id: string; total_price: number; processed_at: string; matched_code: string }[] = [];
-  for (const order of orders as any[]) {
-    const discountCodes: { code: string }[] = order.order_data?.discount_codes ?? [];
-    const match = discountCodes.find((d: any) => activeCodes.has((d.code as string).toUpperCase()));
-    if (match) {
-      attributedOrders.push({
-        order_id: order.shopify_order_id,
-        total_price: Number(order.total_price),
-        processed_at: order.processed_at,
-        matched_code: match.code,
-      });
-    }
-  }
+  // Orders converted by this partner — order_attribution is written by
+  // shopify-order-webhook for EVERY order and already covers both coupon-code
+  // redemptions and UTM-link conversions. Matching discount codes against
+  // orders here would miss any partner tracked only via a UTM link, no coupon.
+  const { data: attributionRows = [] } = await supabase
+    .from('order_attribution')
+    .select('shopify_order_id, order_revenue, converted_by, converted_coupon_code, lt_ref, created_at')
+    .eq('client_id', client.id)
+    .eq('converted_partner_id', partner.id)
+    .order('created_at', { ascending: false });
+
+  const shopifyOrderIds = (attributionRows as any[]).map(a => a.shopify_order_id);
+  const { data: matchedOrders = [] } = shopifyOrderIds.length
+    ? await supabase
+        .from('shopify_orders')
+        .select('shopify_order_id, processed_at')
+        .eq('client_id', client.id)
+        .in('shopify_order_id', shopifyOrderIds)
+    : { data: [] };
+  const processedAtByOrderId = new Map((matchedOrders as any[]).map(o => [o.shopify_order_id, o.processed_at]));
+
+  const cutoffMs = Date.now() - days * 24 * 60 * 60 * 1000;
+  const attributedOrders: { order_id: string; total_price: number; processed_at: string; matched_code: string; source: string }[] = (attributionRows as any[])
+    .map(a => ({
+      order_id: a.shopify_order_id,
+      total_price: Number(a.order_revenue),
+      processed_at: processedAtByOrderId.get(a.shopify_order_id) ?? a.created_at,
+      matched_code: a.converted_by === 'coupon' ? a.converted_coupon_code : a.lt_ref,
+      source: a.converted_by,
+    }))
+    .filter(o => new Date(o.processed_at).getTime() >= cutoffMs);
 
   const revenue = attributedOrders.reduce((s, o) => s + o.total_price, 0);
   const totalClicks = (utmLinks as any[]).reduce((s: number, l: any) => s + (l.clicks ?? 0), 0);
