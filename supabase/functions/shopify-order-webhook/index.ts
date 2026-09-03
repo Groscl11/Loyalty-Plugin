@@ -177,12 +177,35 @@ async function recordAttribution(supabase: any, clientId: string, order: any) {
   };
   const touchCount = parseInt(attrs['_aff_touches'] || '1', 10);
 
-  // Fallback for stores with no goself-attribution.js on their theme (the
-  // common case — it requires a manual theme edit): the Web Pixel reports
-  // {ref, checkout_token} at checkout_completed via track-checkout-attribution,
-  // staged in pending_checkout_attributions. Join it back to this order by
-  // checkout token — order.token is the same value Checkout.token carries in
-  // the Web Pixel event.
+  // Fallback 1: many stores run a checkout-tracking script/app that already
+  // writes utm_source/utm_medium/utm_campaign + landing_page_url onto every
+  // order's note_attributes — completely independent of us. bg_ref rides
+  // along inside landing_page_url's query string. This is the most reliable
+  // fallback for stores on a third-party checkout (e.g. Fastrr/Shiprocket
+  // one-click checkout): those replace Shopify's own checkout page, which
+  // breaks the Web Pixel's checkout_completed event (fallback 2 below) since
+  // it only fires on Shopify's native checkout/thank-you page.
+  if (!lt.ref) {
+    const landingUrl = attrs['landing_page_url'] || null;
+    if (landingUrl) {
+      try {
+        const params = new URL(landingUrl).searchParams;
+        const foundRef = params.get('bg_ref') || params.get('bg_aff') || params.get('ref') || params.get('aff');
+        if (foundRef) {
+          lt.ref = foundRef;
+          lt.source = attrs['utm_source'] || null;
+          lt.medium = attrs['utm_medium'] || null;
+          lt.campaign = attrs['utm_campaign'] || null;
+        }
+      } catch { /* malformed landing_page_url — ignore */ }
+    }
+  }
+
+  // Fallback 2: for stores on Shopify's own native checkout, the Web Pixel
+  // reports {ref, checkout_token} at checkout_completed via
+  // track-checkout-attribution, staged in pending_checkout_attributions.
+  // Join it back to this order by checkout token — order.token is the same
+  // value Checkout.token carries in the Web Pixel event.
   if (!lt.ref) {
     const checkoutToken: string | null = order.token || order.checkout_token || null;
     if (checkoutToken) {
