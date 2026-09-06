@@ -1,0 +1,180 @@
+{%- comment -%}
+  Goself Affiliate Attribution Tracking — app embed block
+
+  Ships with the app; the merchant enables it with one toggle (or via the
+  activation deep link surfaced in the dashboard). No theme code editing.
+
+  Why this exists: the Web Pixel handles CLICK counting fine (it needs no
+  merchant action), but it cannot link a completed ORDER back to the ref that
+  drove it — Web Pixels run sandboxed with no cart access, and their
+  checkout_completed event doesn't fire on third-party checkouts like
+  Fastrr/GoKwik. This block writes the ref into Shopify CART ATTRIBUTES, which
+  ride through to the order's note_attributes regardless of which checkout
+  front-end processes payment, because those checkouts build on Shopify's cart
+  rather than replacing it.
+
+  Writes exactly the keys shopify-order-webhook's recordAttribution() already
+  reads as its primary path:
+    _aff_ft_* (first touch, never overwritten)  _aff_lt_* (last touch)
+    _aff_touches (touch count)
+
+  Two deliberate differences from storefront-scripts/goself-attribution.js:
+    1. No click ping — the Web Pixel already increments the click counter.
+       Pinging here too would double-count every click.
+    2. Only a visit carrying an attribution ref counts as a touch. A later
+       visit with utm_source but no ref (newsletter, organic) no longer wipes
+       the affiliate's last-touch credit — standard last-affiliate-click
+       behaviour.
+{%- endcomment -%}
+
+{%- if block.settings.enable_attribution -%}
+<script>
+(function () {
+  'use strict';
+
+  var STORAGE_KEY = '_gsa_v1';
+  var WINDOW_DAYS = {{ block.settings.attribution_window_days | default: 30 | json }};
+  var SHOP = {{ shop.permanent_domain | json }};
+  var HEARTBEAT_ENDPOINT = 'https://jblqyvicxhmqqjhostcj.supabase.co/functions/v1/track-embed-heartbeat';
+
+  // ── Report that this embed is live on the theme ───────────────────────────
+  // The dashboard uses this to tell the merchant whether attribution tracking
+  // is actually switched on. Detecting it server-side would need the
+  // read_themes scope, which would force a re-consent screen on every install;
+  // self-reporting avoids that. Once per session, so it costs one request.
+  (function heartbeat() {
+    if (!SHOP) return;
+    try {
+      if (sessionStorage.getItem('_gsa_hb')) return;
+      sessionStorage.setItem('_gsa_hb', '1');
+    } catch (e) { /* private mode — fall through, still ping once per page */ }
+    try {
+      fetch(HEARTBEAT_ENDPOINT, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        keepalive: true,
+        body: JSON.stringify({ shop: SHOP })
+      }).catch(function () {});
+    } catch (e) {}
+  })();
+
+  // ── Read incoming attribution params ──────────────────────────────────────
+  function readParams() {
+    try {
+      var p = new URLSearchParams(window.location.search);
+      var ref = p.get('bg_ref') || p.get('bg_aff') || p.get('ref') || p.get('aff') || null;
+      // A ref is required. utm_source alone is not an affiliate touch and must
+      // not overwrite an existing one.
+      if (!ref) return null;
+      return {
+        ref: ref,
+        source: p.get('utm_source') || null,
+        medium: p.get('utm_medium') || null,
+        campaign: p.get('utm_campaign') || null,
+        ts: new Date().toISOString()
+      };
+    } catch (e) { return null; }
+  }
+
+  // ── Storage, scoped to the attribution window ─────────────────────────────
+  function load() {
+    try {
+      var raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return null;
+      var data = JSON.parse(raw);
+      var windowDays = data.window_days || WINDOW_DAYS;
+      var firstTs = new Date(data.first_touch ? data.first_touch.ts : data.ts);
+      if (new Date() > new Date(firstTs.getTime() + windowDays * 86400000)) {
+        localStorage.removeItem(STORAGE_KEY);
+        return null;
+      }
+      return data;
+    } catch (e) { return null; }
+  }
+
+  function save(data) {
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); } catch (e) {}
+  }
+
+  // ── Write to Shopify cart attributes ──────────────────────────────────────
+  // These become note_attributes on the resulting order.
+  function writeCartAttributes(data) {
+    var ft = data.first_touch || {};
+    var lt = data.last_touch || {};
+    fetch('/cart/update.js', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'same-origin',
+      body: JSON.stringify({
+        attributes: {
+          '_aff_ft_ref': ft.ref || '',
+          '_aff_ft_src': ft.source || '',
+          '_aff_ft_med': ft.medium || '',
+          '_aff_ft_cam': ft.campaign || '',
+          '_aff_ft_ts':  ft.ts || '',
+          '_aff_lt_ref': lt.ref || '',
+          '_aff_lt_src': lt.source || '',
+          '_aff_lt_med': lt.medium || '',
+          '_aff_lt_cam': lt.campaign || '',
+          '_aff_lt_ts':  lt.ts || '',
+          '_aff_touches': String(data.touch_count || 1)
+        }
+      })
+    }).catch(function () {});
+  }
+
+  var incoming = readParams();
+  var stored = load();
+
+  if (incoming) {
+    var updated = stored
+      ? {
+          first_touch: stored.first_touch || stored,
+          last_touch: incoming,
+          touch_count: (stored.touch_count || 1) + 1,
+          window_days: stored.window_days || WINDOW_DAYS
+        }
+      : {
+          first_touch: incoming,
+          last_touch: incoming,
+          touch_count: 1,
+          window_days: WINDOW_DAYS
+        };
+    save(updated);
+    writeCartAttributes(updated);
+  } else if (stored) {
+    // No ref on this page load, but we're still inside the attribution window.
+    // Re-assert the attributes so a delayed purchase — days later, arriving
+    // with no ref in the URL — still carries the original affiliate's credit.
+    writeCartAttributes(stored);
+  }
+})();
+</script>
+{%- endif -%}
+
+{% schema %}
+{
+  "name": "Affiliate Attribution Tracking",
+  "target": "body",
+  "settings": [
+    {
+      "type": "checkbox",
+      "id": "enable_attribution",
+      "label": "Track affiliate & UTM link attribution",
+      "default": true,
+      "info": "Links completed orders back to the affiliate link that drove them. Required for partner order/revenue reporting."
+    },
+    {
+      "type": "range",
+      "id": "attribution_window_days",
+      "label": "Attribution window (days)",
+      "min": 1,
+      "max": 90,
+      "step": 1,
+      "default": 30,
+      "unit": "d",
+      "info": "How long after clicking an affiliate link a purchase still counts for that partner."
+    }
+  ]
+}
+{% endschema %}
